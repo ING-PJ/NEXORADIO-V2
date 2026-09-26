@@ -42,6 +42,7 @@ export interface StationState {
   current_song_title: string;
   current_song_artist: string;
   current_song_cover: string;
+  current_song_url?: string;
   current_song_duration: number;
   current_song_progress: number;
   listeners_count: number;

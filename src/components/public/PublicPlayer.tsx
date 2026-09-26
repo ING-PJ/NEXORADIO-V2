@@ -47,23 +47,29 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
   }, []);
 
   // Auto-switch track when song changes in stationState (Serverless Vercel + Supabase mode)
+  // Auto-switch track when song changes in stationState (Serverless Vercel + Supabase mode)
   useEffect(() => {
-    if (!process.env.NEXT_PUBLIC_STREAM_URL && isPlaying && audioRef.current && stationState.current_song_id) {
+    if (!process.env.NEXT_PUBLIC_STREAM_URL && isPlaying && audioRef.current) {
       radioStore.getSongs().then((songs) => {
-        const activeSong = songs.find((s) => s.id === stationState.current_song_id);
-        if (activeSong && audioRef.current && audioRef.current.src !== activeSong.file_url) {
-          audioRef.current.src = activeSong.file_url;
+        const activeSong = songs.find(
+          (s) =>
+            (stationState.current_song_id && s.id === stationState.current_song_id) ||
+            (stationState.current_song_title && s.title.toLowerCase() === stationState.current_song_title.toLowerCase())
+        );
+        const targetUrl = stationState.current_song_url || activeSong?.file_url || '/songs/summer.mp3';
+        if (targetUrl && audioRef.current && !audioRef.current.src.endsWith(targetUrl) && audioRef.current.src !== targetUrl) {
+          audioRef.current.src = targetUrl;
           audioRef.current.load();
           audioRef.current.play().catch(console.warn);
         }
       });
     }
-  }, [stationState.current_song_id, isPlaying]);
+  }, [stationState.current_song_id, stationState.current_song_title, stationState.current_song_url, isPlaying]);
 
   // Initialize audio element
   useEffect(() => {
     const audio = new Audio();
-    audio.crossOrigin = 'anonymous';
+    // Do not enforce crossOrigin on client playback to avoid CORS restrictions on media files
     audioRef.current = audio;
 
     audio.addEventListener('playing', () => {
@@ -117,12 +123,17 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
         }
       }
 
-      // Vercel + Supabase Serverless Radio Mode: Play current song directly from Supabase Storage CDN
+      // Vercel + Supabase Serverless Radio Mode: Play current song directly
       try {
         const songs = await radioStore.getSongs();
-        const activeSong = songs.find((s) => s.id === stationState.current_song_id) || songs[0];
-        if (activeSong) {
-          audioRef.current.src = activeSong.file_url;
+        const activeSong = songs.find(
+          (s) =>
+            (stationState.current_song_id && s.id === stationState.current_song_id) ||
+            (stationState.current_song_title && s.title.toLowerCase() === stationState.current_song_title.toLowerCase())
+        ) || songs[0];
+        const targetUrl = stationState.current_song_url || activeSong?.file_url || '/songs/summer.mp3';
+        if (targetUrl) {
+          audioRef.current.src = targetUrl;
           audioRef.current.load();
           await audioRef.current.play();
           setIsPlaying(true);

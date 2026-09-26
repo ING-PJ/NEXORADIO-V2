@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS public.station_state (
     current_song_title VARCHAR(255) DEFAULT 'NEXO Stream',
     current_song_artist VARCHAR(255) DEFAULT 'NEXO RADIO',
     current_song_cover TEXT DEFAULT '/cover_default.webp',
+    current_song_url TEXT DEFAULT '/songs/summer.mp3',
     current_song_duration INTEGER DEFAULT 0,
     current_song_progress INTEGER DEFAULT 0,
     listeners_count INTEGER DEFAULT 1,
@@ -69,9 +70,13 @@ CREATE TABLE IF NOT EXISTS public.station_state (
 );
 
 -- Seed initial station state row
-INSERT INTO public.station_state (id, is_live, current_song_title, current_song_artist, current_song_cover, listeners_count)
-VALUES ('current', true, 'Summer', 'Calvin Harris', '/cover_default.webp', 1)
-ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.station_state (id, is_live, current_song_title, current_song_artist, current_song_cover, current_song_url, listeners_count)
+VALUES ('current', true, 'Summer Vibes', 'Calvin Harris ft. NEXO', '/cover_default.webp', '/songs/summer.mp3', 1)
+ON CONFLICT (id) DO UPDATE SET
+    current_song_title = EXCLUDED.current_song_title,
+    current_song_artist = EXCLUDED.current_song_artist,
+    current_song_cover = EXCLUDED.current_song_cover,
+    current_song_url = EXCLUDED.current_song_url;
 
 -- Seed default playlists
 INSERT INTO public.playlists (id, name, description, cover_url)
@@ -103,7 +108,7 @@ CREATE POLICY "Auth manage requests" ON public.song_requests FOR ALL TO authenti
 CREATE POLICY "Auth manage songs" ON public.songs FOR ALL TO authenticated USING (true);
 CREATE POLICY "Auth manage playlists" ON public.playlists FOR ALL TO authenticated USING (true);
 CREATE POLICY "Auth manage playlist_songs" ON public.playlist_songs FOR ALL TO authenticated USING (true);
-CREATE POLICY "Auth update station_state" ON public.station_state FOR ALL TO authenticated USING (true);
+CREATE POLICY "Public update station_state" ON public.station_state FOR ALL USING (true);
 
 -- Enable Supabase Realtime for instant station updates
 ALTER PUBLICATION supabase_realtime ADD TABLE public.station_state;

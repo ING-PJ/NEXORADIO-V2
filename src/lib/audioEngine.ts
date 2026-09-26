@@ -163,12 +163,31 @@ class AudioEngine {
         current_song_title: song.title,
         current_song_artist: song.artist,
         current_song_cover: song.cover_url,
+        current_song_url: song.file_url,
         current_song_duration: song.duration,
         current_song_progress: 0,
       });
       this.notify();
     } catch (err) {
-      console.warn('Playback error (e.g. autoplay blocked):', err);
+      console.warn('Playback error, attempting fallback to local audio:', err);
+      try {
+        this.audioElement.src = '/songs/summer.mp3';
+        this.audioElement.load();
+        await this.audioElement.play();
+        this.isPlaying = true;
+        radioStore.updateStationState({
+          current_song_id: song.id,
+          current_song_title: song.title,
+          current_song_artist: song.artist,
+          current_song_cover: song.cover_url,
+          current_song_url: '/songs/summer.mp3',
+          current_song_duration: song.duration,
+          current_song_progress: 0,
+        });
+        this.notify();
+      } catch (e2) {
+        console.error('Final audio play error:', e2);
+      }
     }
   }
 
@@ -189,6 +208,12 @@ class AudioEngine {
         if (queue.length > 0) {
           await this.playSong(queue[0]);
           return;
+        } else {
+          const songs = await radioStore.getSongs();
+          if (songs && songs.length > 0) {
+            await this.playSong(songs[0]);
+            return;
+          }
         }
       } else {
         await this.audioElement.play();

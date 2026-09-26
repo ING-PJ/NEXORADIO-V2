@@ -403,7 +403,32 @@ class RadioStore {
     }
 
     if (isSupabaseConfigured && supabase) {
-      supabase.from('station_state').upsert(updated, { onConflict: 'id' }).then();
+      const isUuid = (str?: string | null) =>
+        Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+
+      const payload: any = {
+        id: 'current',
+        is_live: updated.is_live ?? true,
+        is_mic_active: updated.is_mic_active ?? false,
+        current_song_id: isUuid(updated.current_song_id) ? updated.current_song_id : null,
+        current_song_title: updated.current_song_title || 'Summer Vibes',
+        current_song_artist: updated.current_song_artist || 'Calvin Harris ft. NEXO',
+        current_song_cover: updated.current_song_cover || '/cover_default.webp',
+        current_song_duration: updated.current_song_duration || 0,
+        current_song_progress: updated.current_song_progress || 0,
+        listeners_count: updated.listeners_count || 1,
+        air_time_seconds: updated.air_time_seconds || 0,
+        updated_at: new Date().toISOString(),
+      };
+
+      supabase
+        .from('station_state')
+        .upsert(payload, { onConflict: 'id' })
+        .then(({ error }) => {
+          if (error) {
+            console.warn('Supabase station_state sync notice:', error.message);
+          }
+        });
     }
 
     this.postSync();
