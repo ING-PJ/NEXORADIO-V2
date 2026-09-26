@@ -108,6 +108,16 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
     }
   }, [volume, isMuted]);
 
+  // Resynchronize listener playback position with studio air progress
+  useEffect(() => {
+    if (!process.env.NEXT_PUBLIC_STREAM_URL && isPlaying && audioRef.current && stationState.current_song_progress > 0) {
+      const diff = Math.abs(audioRef.current.currentTime - stationState.current_song_progress);
+      if (diff > 4) {
+        audioRef.current.currentTime = stationState.current_song_progress;
+      }
+    }
+  }, [stationState.current_song_progress, isPlaying]);
+
   const togglePlay = async () => {
     if (!audioRef.current) return;
 
@@ -147,7 +157,17 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
         audioRef.current.src = targetUrl;
         audioRef.current.volume = isMuted ? 0 : (volume || 0.85);
         audioRef.current.load();
+
+        const syncTime = stationState.current_song_progress || 0;
+        if (syncTime > 0) {
+          audioRef.current.currentTime = syncTime;
+        }
+
         await audioRef.current.play();
+
+        if (syncTime > 0 && audioRef.current && Math.abs(audioRef.current.currentTime - syncTime) > 3) {
+          audioRef.current.currentTime = syncTime;
+        }
         setIsPlaying(true);
       } catch (playErr) {
         console.warn('Playback error with targetUrl, retrying local fallback:', playErr);

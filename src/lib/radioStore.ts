@@ -434,6 +434,7 @@ class RadioStore {
         current_song_title: updated.current_song_title || 'Summer Vibes',
         current_song_artist: updated.current_song_artist || 'Calvin Harris ft. NEXO',
         current_song_cover: updated.current_song_cover || '/cover_default.webp',
+        current_song_url: updated.current_song_url || '/songs/summer.mp3',
         current_song_duration: updated.current_song_duration || 0,
         current_song_progress: updated.current_song_progress || 0,
         listeners_count: updated.listeners_count || 1,
