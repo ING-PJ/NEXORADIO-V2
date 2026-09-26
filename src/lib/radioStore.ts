@@ -5,7 +5,7 @@ import { supabase, isSupabaseConfigured } from './supabase';
 const SONGS_KEY = 'nexo_radio_songs_v1';
 const PLAYLISTS_KEY = 'nexo_radio_playlists_v1';
 const REQUESTS_KEY = 'nexo_radio_requests_v1';
-const STATE_KEY = 'nexo_radio_station_state_v1';
+const STATE_KEY = 'nexo_radio_station_state_v2';
 const QUEUE_KEY = 'nexo_radio_queue_v1';
 
 class RadioStore {
@@ -41,7 +41,12 @@ class RadioStore {
           .single()
           .then(({ data }) => {
             if (data) {
-              localStorage.setItem(STATE_KEY, JSON.stringify(data));
+              const current = this.getStationState();
+              const merged = { ...current, ...data };
+              if (merged.listeners_count >= 1200) {
+                merged.listeners_count = 1;
+              }
+              localStorage.setItem(STATE_KEY, JSON.stringify(merged));
               this.notify();
             }
           });
@@ -368,10 +373,17 @@ class RadioStore {
   // --- STATION STATE ---
   public getStationState(): StationState {
     if (typeof window !== 'undefined') {
+      // Purge legacy v1 cached state if present
+      localStorage.removeItem('nexo_radio_station_state_v1');
+
       const saved = localStorage.getItem(STATE_KEY);
       if (saved) {
         try {
-          return JSON.parse(saved);
+          const parsed = JSON.parse(saved);
+          if (parsed.listeners_count >= 1200) {
+            parsed.listeners_count = 1;
+          }
+          return parsed;
         } catch {}
       }
     }

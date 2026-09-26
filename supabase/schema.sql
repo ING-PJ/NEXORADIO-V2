@@ -63,14 +63,14 @@ CREATE TABLE IF NOT EXISTS public.station_state (
     current_song_cover TEXT DEFAULT '/cover_default.webp',
     current_song_duration INTEGER DEFAULT 0,
     current_song_progress INTEGER DEFAULT 0,
-    listeners_count INTEGER DEFAULT 1248,
+    listeners_count INTEGER DEFAULT 1,
     air_time_seconds INTEGER DEFAULT 0,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Seed initial station state row
 INSERT INTO public.station_state (id, is_live, current_song_title, current_song_artist, current_song_cover, listeners_count)
-VALUES ('current', true, 'Summer', 'Calvin Harris', '/cover_default.webp', 1248)
+VALUES ('current', true, 'Summer', 'Calvin Harris', '/cover_default.webp', 1)
 ON CONFLICT (id) DO NOTHING;
 
 -- Seed default playlists
