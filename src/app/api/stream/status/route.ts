@@ -12,7 +12,7 @@ export async function GET() {
     return NextResponse.json({
       status: 'offline',
       isBroadcasting: false,
-      listenersCount: 1248,
+      listenersCount: 0,
       port: 8000,
       upstreamIcecast: false,
     });

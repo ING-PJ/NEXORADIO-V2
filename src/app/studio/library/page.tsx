@@ -486,7 +486,7 @@ export default function StudioLibraryPage() {
                 </div>
                 <div className="flex justify-between py-1.5">
                   <span className="text-gray-400">Reproducciones</span>
-                  <span className="text-white font-mono">{selectedSongDetails.play_count || 1248}</span>
+                  <span className="text-white font-mono">{selectedSongDetails.play_count || 0}</span>
                 </div>
               </div>
 

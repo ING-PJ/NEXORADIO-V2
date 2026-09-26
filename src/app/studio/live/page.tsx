@@ -26,12 +26,18 @@ export default function StudioLivePage() {
   const [engineState, setEngineState] = useState(audioEngine.getState());
   const [levels, setLevels] = useState<AudioLevels>({ mic: 0, music: 0, master: 0 });
   const [queue, setQueue] = useState<Song[]>([]);
+  const [favoritesCount, setFavoritesCount] = useState(0);
+  const [requestsCount, setRequestsCount] = useState(0);
 
   useEffect(() => {
-    const update = () => {
+    const update = async () => {
       setStationState(radioStore.getStationState());
       setEngineState(audioEngine.getState());
       setQueue(radioStore.getQueue());
+      const s = await radioStore.getSongs();
+      setFavoritesCount(s.filter((item) => item.is_favorite).length);
+      const r = await radioStore.getRequests();
+      setRequestsCount(r.length);
     };
 
     const unsubStore = radioStore.subscribe(update);
@@ -74,7 +80,7 @@ export default function StudioLivePage() {
             <span>● EN VIVO {formatAirTime(engineState.airTimeSeconds)}</span>
           </div>
           <span className="text-xs text-gray-400">
-            Transmitiendo para <strong className="text-white">{stationState.listeners_count.toLocaleString()}</strong> oyentes
+            Transmitiendo para <strong className="text-white">{stationState.listeners_count.toLocaleString()}</strong> {stationState.listeners_count === 1 ? 'oyente' : 'oyentes'}
           </span>
         </div>
 
@@ -313,17 +319,17 @@ export default function StudioLivePage() {
             <div className="p-2.5 rounded-2xl bg-white/5">
               <Users className="w-4 h-4 mx-auto text-[#e5b45f] mb-1" />
               <div className="text-base font-bold text-white">{stationState.listeners_count}</div>
-              <div className="text-[10px] text-gray-400">oyentes ahora</div>
+              <div className="text-[10px] text-gray-400">{stationState.listeners_count === 1 ? 'oyente' : 'oyentes'}</div>
             </div>
             <div className="p-2.5 rounded-2xl bg-white/5">
               <Heart className="w-4 h-4 mx-auto text-rose-400 mb-1" />
-              <div className="text-base font-bold text-white">342</div>
-              <div className="text-[10px] text-gray-400">me gusta hoy</div>
+              <div className="text-base font-bold text-white">{favoritesCount}</div>
+              <div className="text-[10px] text-gray-400">favoritas</div>
             </div>
             <div className="p-2.5 rounded-2xl bg-white/5">
               <MessageSquare className="w-4 h-4 mx-auto text-cyan-400 mb-1" />
-              <div className="text-base font-bold text-white">89</div>
-              <div className="text-[10px] text-gray-400">mensajes hoy</div>
+              <div className="text-base font-bold text-white">{requestsCount}</div>
+              <div className="text-[10px] text-gray-400">solicitudes</div>
             </div>
           </div>
           <p className="text-[11px] text-gray-500 text-center">Transmisión estable y fluida</p>

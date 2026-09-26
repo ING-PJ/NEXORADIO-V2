@@ -46,15 +46,17 @@ class RadioStore {
             }
           });
 
-        // Listen for live station updates and incoming requests
-        supabase
-          .channel('nexo_global_realtime')
+        // Listen for live station updates, incoming requests, and active presence
+        const channel = supabase.channel('nexo_global_realtime');
+        channel
           .on(
             'postgres_changes',
             { event: '*', schema: 'public', table: 'station_state' },
             (payload) => {
               if (payload.new) {
-                localStorage.setItem(STATE_KEY, JSON.stringify(payload.new));
+                const current = this.getStationState();
+                const merged = { ...current, ...payload.new };
+                localStorage.setItem(STATE_KEY, JSON.stringify(merged));
                 this.notify();
               }
             }
@@ -66,7 +68,18 @@ class RadioStore {
               this.notify();
             }
           )
-          .subscribe();
+          .on('presence', { event: 'sync' }, () => {
+            const presenceState = channel.presenceState();
+            const count = Object.keys(presenceState).length;
+            this.setListenersCount(count);
+          })
+          .subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') {
+              await channel.track({
+                joined_at: new Date().toISOString(),
+              });
+            }
+          });
       }
     }
   }
@@ -383,6 +396,17 @@ class RadioStore {
 
     this.postSync();
     return updated;
+  }
+
+  public setListenersCount(count: number) {
+    const current = this.getStationState();
+    if (current.listeners_count !== count) {
+      current.listeners_count = count;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(STATE_KEY, JSON.stringify(current));
+      }
+      this.notify();
+    }
   }
 }
 

@@ -11,7 +11,7 @@ export const INITIAL_SONGS: Song[] = [
     file_url: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=summer-tropical-house-113264.mp3',
     cover_url: '/cover_default.webp',
     file_size: 5800000,
-    play_count: 1248,
+    play_count: 0,
     is_favorite: true,
     created_at: new Date(Date.now() - 14 * 86400000).toISOString(),
   },
@@ -160,6 +160,6 @@ export const INITIAL_STATION_STATE: StationState = {
   current_song_cover: '/cover_default.webp',
   current_song_duration: 232,
   current_song_progress: 84,
-  listeners_count: 1248,
-  air_time_seconds: 1457, // 00:24:17
+  listeners_count: 0,
+  air_time_seconds: 0,
 };

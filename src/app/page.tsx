@@ -192,7 +192,7 @@ export default function NexoRadioPublicPage() {
               <div className="hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-gray-300">
                 <Users className="w-3.5 h-3.5 text-[#e5b45f]" />
                 <span>
-                  <strong className="text-white font-semibold">{stationState.listeners_count.toLocaleString()}</strong> oyentes ahora
+                  <strong className="text-white font-semibold">{stationState.listeners_count.toLocaleString()}</strong> {stationState.listeners_count === 1 ? 'oyente ahora' : 'oyentes ahora'}
                 </span>
               </div>
 

@@ -136,7 +136,7 @@ export default function StudioDashboardPage() {
             </div>
           )}
           <span className="hidden sm:inline text-xs text-gray-400">
-            Transmitiendo para <strong className="text-white">{stationState.listeners_count.toLocaleString()}</strong> oyentes
+            Transmitiendo para <strong className="text-white">{stationState.listeners_count.toLocaleString()}</strong> {stationState.listeners_count === 1 ? 'oyente' : 'oyentes'}
           </span>
         </div>
 
@@ -605,34 +605,38 @@ export default function StudioDashboardPage() {
       </div>
 
       {/* ========================================================= */}
-      {/* BOTTOM REALTIME STATS (MOCKUP 03 / 04) */}
+      {/* BOTTOM REALTIME STATS (ESTADÍSTICAS REALES) */}
       {/* ========================================================= */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
         <div className="rounded-3xl glass-panel p-5 border border-white/5">
           <span className="text-xs text-gray-400 font-medium">Oyentes en tiempo real</span>
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-2xl font-bold text-white">{stationState.listeners_count.toLocaleString()}</span>
-            <span className="text-xs text-emerald-400 font-semibold">+14% hoy</span>
+            <span className="text-xs text-emerald-400 font-semibold">
+              {stationState.listeners_count > 0 ? 'Conectados ahora' : 'Sin oyentes'}
+            </span>
           </div>
-          <p className="text-[11px] text-gray-500 mt-1">Conectados a la transmisión actual</p>
+          <p className="text-[11px] text-gray-500 mt-1">Sintonizando la transmisión en vivo</p>
         </div>
 
         <div className="rounded-3xl glass-panel p-5 border border-white/5">
-          <span className="text-xs text-gray-400 font-medium">Reproducción semanal</span>
+          <span className="text-xs text-gray-400 font-medium">Biblioteca musical</span>
           <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-2xl font-bold text-white">12,540</span>
-            <span className="text-xs text-[#e5b45f] font-semibold">oyentes únicos</span>
+            <span className="text-2xl font-bold text-white">{allSongs.length}</span>
+            <span className="text-xs text-[#e5b45f] font-semibold">canciones</span>
           </div>
-          <p className="text-[11px] text-gray-500 mt-1">Sintonizaciones registradas</p>
+          <p className="text-[11px] text-gray-500 mt-1">Pistas listas para reproducir</p>
         </div>
 
         <div className="rounded-3xl glass-panel p-5 border border-white/5">
-          <span className="text-xs text-gray-400 font-medium">Tiempo al aire hoy</span>
+          <span className="text-xs text-gray-400 font-medium">Tiempo al aire en sesión</span>
           <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-2xl font-bold text-white">4 h 32 min</span>
-            <span className="text-xs text-gray-400 font-semibold">de transmisión</span>
+            <span className="text-2xl font-bold text-white">{formatAirTime(engineState.airTimeSeconds)}</span>
+            <span className="text-xs text-gray-400 font-semibold">
+              {engineState.isBroadcasting ? 'Transmitiendo' : 'En pausa'}
+            </span>
           </div>
-          <p className="text-[11px] text-gray-500 mt-1">Operación continua en alta fidelidad</p>
+          <p className="text-[11px] text-gray-500 mt-1">Duración de la emisión actual</p>
         </div>
       </div>
     </div>
