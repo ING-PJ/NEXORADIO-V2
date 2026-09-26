@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --background: #090a0d;
+    --foreground: #f3f4f6;
+    --nexo-gold: #e5b45f;
+    --nexo-gold-hover: #f3c87a;
+    --nexo-gold-glow: rgba(229, 180, 95, 0.35);
+    --nexo-dark-card: rgba(17, 19, 24, 0.78);
+    --nexo-dark-card-border: rgba(255, 255, 255, 0.08);
+    --nexo-dark-surface: #0e1014;
+    --nexo-live-red: #ef4444;
+    --nexo-live-red-glow: rgba(239, 68, 68, 0.4);
+  }
+
+  body {
+    background-color: #08090c;
+    color: #f3f4f6;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow-x: hidden;
+  }
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(14, 16, 20, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(229, 180, 95, 0.25);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(229, 180, 95, 0.5);
+}
+
+/* Gold Glow Utilities */
+.gold-glow {
+  box-shadow: 0 0 25px rgba(229, 180, 95, 0.35);
+}
+
+.gold-glow-sm {
+  box-shadow: 0 0 12px rgba(229, 180, 95, 0.25);
+}
+
+.gold-glow-lg {
+  box-shadow: 0 0 40px rgba(229, 180, 95, 0.45);
+}
+
+.red-glow {
+  box-shadow: 0 0 25px rgba(239, 68, 68, 0.4);
+}
+
+.glass-panel {
+  background: rgba(16, 18, 23, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-panel-subtle {
+  background: rgba(22, 25, 32, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.glass-panel-gold {
+  background: rgba(229, 180, 95, 0.08);
+  border: 1px solid rgba(229, 180, 95, 0.3);
+}
+
+/* Vinyl Rotation Keyframes */
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 24s linear infinite;
+}
+
+/* Audio Waveform pulse animations */
+@keyframes pulse-gold {
+  0%, 100% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+}
+
+.animate-pulse-gold {
+  animation: pulse-gold 3s ease-in-out infinite;
+}
+
+@keyframes pulse-live {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.animate-pulse-live {
+  animation: pulse-live 1.6s ease-in-out infinite;
+}
