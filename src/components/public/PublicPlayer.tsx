@@ -56,8 +56,11 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
             (stationState.current_song_id && s.id === stationState.current_song_id) ||
             (stationState.current_song_title && s.title.toLowerCase() === stationState.current_song_title.toLowerCase())
         );
-        const targetUrl = stationState.current_song_url || activeSong?.file_url || '/songs/summer.mp3';
-        if (targetUrl && audioRef.current && !audioRef.current.src.endsWith(targetUrl) && audioRef.current.src !== targetUrl) {
+        let targetUrl = stationState.current_song_url || activeSong?.file_url || '/songs/summer.mp3';
+        if (!targetUrl || targetUrl.includes('pixabay.com')) {
+          targetUrl = '/songs/summer.mp3';
+        }
+        if (audioRef.current && !audioRef.current.src.endsWith(targetUrl) && audioRef.current.src !== targetUrl) {
           audioRef.current.src = targetUrl;
           audioRef.current.load();
           audioRef.current.play().catch(console.warn);
@@ -81,9 +84,15 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
       setIsLoading(true);
     });
 
-    audio.addEventListener('error', () => {
-      console.warn('Live stream connection failed, checking fallback track.');
-      setIsLoading(false);
+    audio.addEventListener('error', (e) => {
+      console.warn('Audio connection notice, checking fallback track:', e);
+      if (audio.src && !audio.src.endsWith('/songs/summer.mp3')) {
+        audio.src = '/songs/summer.mp3';
+        audio.load();
+        audio.play().then(() => setIsPlaying(true)).catch(console.warn);
+      } else {
+        setIsLoading(false);
+      }
     });
 
     return () => {
@@ -131,15 +140,27 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
             (stationState.current_song_id && s.id === stationState.current_song_id) ||
             (stationState.current_song_title && s.title.toLowerCase() === stationState.current_song_title.toLowerCase())
         ) || songs[0];
-        const targetUrl = stationState.current_song_url || activeSong?.file_url || '/songs/summer.mp3';
-        if (targetUrl) {
-          audioRef.current.src = targetUrl;
-          audioRef.current.load();
-          await audioRef.current.play();
-          setIsPlaying(true);
+        let targetUrl = stationState.current_song_url || activeSong?.file_url || '/songs/summer.mp3';
+        if (!targetUrl || targetUrl.includes('pixabay.com')) {
+          targetUrl = '/songs/summer.mp3';
         }
+        audioRef.current.src = targetUrl;
+        audioRef.current.volume = isMuted ? 0 : (volume || 0.85);
+        audioRef.current.load();
+        await audioRef.current.play();
+        setIsPlaying(true);
       } catch (playErr) {
-        console.warn('Playback error:', playErr);
+        console.warn('Playback error with targetUrl, retrying local fallback:', playErr);
+        try {
+          if (audioRef.current) {
+            audioRef.current.src = '/songs/summer.mp3';
+            audioRef.current.load();
+            await audioRef.current.play();
+            setIsPlaying(true);
+          }
+        } catch (e2) {
+          console.error('Final fallback error:', e2);
+        }
       }
       setIsLoading(false);
     }

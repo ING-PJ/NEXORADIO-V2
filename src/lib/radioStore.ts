@@ -2,7 +2,7 @@ import { Song, Playlist, SongRequest, StationState } from './types';
 import { INITIAL_SONGS, INITIAL_PLAYLISTS, INITIAL_REQUESTS, INITIAL_STATION_STATE } from './mockData';
 import { supabase, isSupabaseConfigured } from './supabase';
 
-const SONGS_KEY = 'nexo_radio_songs_v1';
+const SONGS_KEY = 'nexo_radio_songs_v2';
 const PLAYLISTS_KEY = 'nexo_radio_playlists_v1';
 const REQUESTS_KEY = 'nexo_radio_requests_v1';
 const STATE_KEY = 'nexo_radio_station_state_v2';
@@ -117,21 +117,41 @@ class RadioStore {
 
   // --- SONGS ---
   public async getSongs(): Promise<Song[]> {
-    if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('songs').select('*').order('created_at', { ascending: false });
-      if (!error && data && data.length > 0) return data as Song[];
+    if (typeof window !== 'undefined') {
+      // Purge legacy songs key
+      localStorage.removeItem('nexo_radio_songs_v1');
     }
 
-    if (typeof window !== 'undefined') {
+    let result: Song[] = INITIAL_SONGS;
+
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase.from('songs').select('*').order('created_at', { ascending: false });
+      if (!error && data && data.length > 0) {
+        result = data as Song[];
+      }
+    } else if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(SONGS_KEY);
       if (saved) {
         try {
-          return JSON.parse(saved);
+          result = JSON.parse(saved);
         } catch {}
       }
-      localStorage.setItem(SONGS_KEY, JSON.stringify(INITIAL_SONGS));
     }
-    return INITIAL_SONGS;
+
+    // Sanitize any dead or blocked external URLs (e.g. Pixabay) to local working MP3s
+    const sanitized = result.map((s, idx) => {
+      let url = s.file_url;
+      if (!url || url.includes('pixabay.com')) {
+        url = idx % 2 === 0 ? '/songs/summer.mp3' : '/songs/flowers.mp3';
+      }
+      return { ...s, file_url: url };
+    });
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(SONGS_KEY, JSON.stringify(sanitized));
+    }
+
+    return sanitized;
   }
 
   public async addSong(song: Omit<Song, 'id' | 'created_at'>): Promise<Song> {
