@@ -16,8 +16,25 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
   const [volume, setVolume] = useState(0.85);
   const [isMuted, setIsMuted] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
+  const [showVolumeSlider, setShowVolumeSlider] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const volumeRef = useRef<HTMLDivElement | null>(null);
+
+  // Close volume popover when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      if (volumeRef.current && !volumeRef.current.contains(event.target as Node)) {
+        setShowVolumeSlider(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
 
   // Sync station state in real-time
   useEffect(() => {
@@ -28,6 +45,20 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
     update();
     return () => unsubscribe();
   }, []);
+
+  // Auto-switch track when song changes in stationState (Serverless Vercel + Supabase mode)
+  useEffect(() => {
+    if (!process.env.NEXT_PUBLIC_STREAM_URL && isPlaying && audioRef.current && stationState.current_song_id) {
+      radioStore.getSongs().then((songs) => {
+        const activeSong = songs.find((s) => s.id === stationState.current_song_id);
+        if (activeSong && audioRef.current && audioRef.current.src !== activeSong.file_url) {
+          audioRef.current.src = activeSong.file_url;
+          audioRef.current.load();
+          audioRef.current.play().catch(console.warn);
+        }
+      });
+    }
+  }, [stationState.current_song_id, isPlaying]);
 
   // Initialize audio element
   useEffect(() => {
@@ -45,10 +76,7 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
     });
 
     audio.addEventListener('error', () => {
-      // If live stream endpoint is temporarily offline, fallback to station song URL
-      console.warn('Live stream connection failed, falling back to direct stream track.');
-      const current = radioStore.getStationState();
-      // Try playing from fallback
+      console.warn('Live stream connection failed, checking fallback track.');
       setIsLoading(false);
     });
 
@@ -73,29 +101,36 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
       setIsPlaying(false);
     } else {
       setIsLoading(true);
-      const streamUrl = process.env.NEXT_PUBLIC_STREAM_URL || '/api/stream/live';
+      const streamUrl = process.env.NEXT_PUBLIC_STREAM_URL;
 
-      // Connect to live stream or current song fallback
+      // If external stream URL is defined, connect to it
+      if (streamUrl) {
+        try {
+          audioRef.current.src = `${streamUrl}?t=${Date.now()}`;
+          audioRef.current.load();
+          await audioRef.current.play();
+          setIsPlaying(true);
+          setIsLoading(false);
+          return;
+        } catch (err) {
+          console.warn('Could not connect to external stream, falling back to direct track:', err);
+        }
+      }
+
+      // Vercel + Supabase Serverless Radio Mode: Play current song directly from Supabase Storage CDN
       try {
-        // First try the bridge stream endpoint
-        audioRef.current.src = `${streamUrl}?t=${Date.now()}`;
-        audioRef.current.load();
-        await audioRef.current.play();
-        setIsPlaying(true);
-        setIsLoading(false);
-      } catch (err) {
-        console.warn('Could not connect to live bridge directly, playing current station stream track:', err);
-        // Fallback to active station track so audio always plays
         const songs = await radioStore.getSongs();
-        const activeSong = songs.find(s => s.id === stationState.current_song_id) || songs[0];
+        const activeSong = songs.find((s) => s.id === stationState.current_song_id) || songs[0];
         if (activeSong) {
           audioRef.current.src = activeSong.file_url;
           audioRef.current.load();
           await audioRef.current.play();
           setIsPlaying(true);
         }
-        setIsLoading(false);
+      } catch (playErr) {
+        console.warn('Playback error:', playErr);
       }
+      setIsLoading(false);
     }
   };
 
@@ -214,31 +249,81 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
           <SkipForward className="w-5 h-5 sm:w-6 sm:h-6" />
         </button>
 
-        {/* Volume Controls */}
-        <div className="flex items-center gap-2">
+        {/* Volume Control with Popover Slider desplegable hacia arriba */}
+        <div
+          ref={volumeRef}
+          className="relative flex items-center justify-center"
+          onMouseEnter={() => setShowVolumeSlider(true)}
+          onMouseLeave={() => setShowVolumeSlider(false)}
+        >
+          {/* Vertical Slider Popover desplegable hacia arriba */}
+          <div
+            className={`absolute bottom-full mb-3 left-1/2 -translate-x-1/2 flex flex-col items-center bg-[#12141a]/95 backdrop-blur-xl border border-white/10 rounded-2xl py-3 px-2 shadow-2xl transition-all duration-300 z-50 ${
+              showVolumeSlider
+                ? 'opacity-100 translate-y-0 pointer-events-auto scale-100'
+                : 'opacity-0 translate-y-2 pointer-events-none scale-95'
+            }`}
+          >
+            {/* Porcentaje de volumen */}
+            <span className="text-[10px] font-bold text-[#e5b45f] mb-2 select-none font-mono">
+              {isMuted ? '0%' : `${Math.round(volume * 100)}%`}
+            </span>
+
+            {/* Slider vertical */}
+            <div className="h-28 w-7 flex items-center justify-center relative">
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value={isMuted ? 0 : volume}
+                onChange={(e) => {
+                  setVolume(parseFloat(e.target.value));
+                  if (isMuted) setIsMuted(false);
+                }}
+                className="w-24 h-1.5 -rotate-90 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-[#e5b45f]"
+              />
+            </div>
+
+            {/* Botón de silencio rápido */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsMuted(!isMuted);
+              }}
+              className="mt-2 text-gray-400 hover:text-white transition-colors p-1"
+              title={isMuted ? 'Activar sonido' : 'Silenciar'}
+            >
+              {isMuted || volume === 0 ? (
+                <VolumeX className="w-3.5 h-3.5 text-rose-400" />
+              ) : (
+                <Volume2 className="w-3.5 h-3.5 text-gray-300 hover:text-[#e5b45f]" />
+              )}
+            </button>
+
+            {/* Flecha decorativa inferior */}
+            <div className="w-2 h-2 bg-[#12141a] rotate-45 border-r border-b border-white/10 -bottom-1 left-1/2 -translate-x-1/2 absolute" />
+          </div>
+
+          {/* Botón icono de volumen perfectamente alineado con los demás controles */}
           <button
-            onClick={() => setIsMuted(!isMuted)}
-            className="p-2 text-gray-400 hover:text-white transition-colors"
-            title={isMuted ? 'Activar sonido' : 'Silenciar'}
+            type="button"
+            onClick={() => setShowVolumeSlider(!showVolumeSlider)}
+            className={`p-2.5 rounded-full transition-all duration-200 active:scale-90 ${
+              showVolumeSlider
+                ? 'text-[#e5b45f] bg-[#e5b45f]/15 ring-1 ring-[#e5b45f]/30'
+                : 'text-gray-400 hover:text-white'
+            }`}
+            title="Ajustar volumen"
+            aria-label="Control de volumen"
           >
             {isMuted || volume === 0 ? (
-              <VolumeX className="w-5 h-5" />
+              <VolumeX className="w-5 h-5 sm:w-6 sm:h-6 text-rose-400" />
             ) : (
-              <Volume2 className="w-5 h-5" />
+              <Volume2 className="w-5 h-5 sm:w-6 sm:h-6" />
             )}
           </button>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            value={isMuted ? 0 : volume}
-            onChange={(e) => {
-              setVolume(parseFloat(e.target.value));
-              if (isMuted) setIsMuted(false);
-            }}
-            className="w-16 sm:w-24 h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-[#e5b45f]"
-          />
         </div>
       </div>
 

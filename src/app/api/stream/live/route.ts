@@ -21,9 +21,10 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Otherwise proxy from the local bridge server at port 8000
+  // Otherwise proxy from the local/internal bridge server
   try {
-    const bridgeUrl = `http://127.0.0.1:8000/live`;
+    const bridgeBase = process.env.BRIDGE_INTERNAL_URL || 'http://127.0.0.1:8000';
+    const bridgeUrl = `${bridgeBase}/live`;
     const response = await fetch(bridgeUrl);
     return new Response(response.body, {
       headers: {

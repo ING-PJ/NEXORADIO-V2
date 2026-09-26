@@ -354,7 +354,8 @@ class AudioEngine {
       this.mediaRecorder = new MediaRecorder(stream, options);
 
       // Connect to Source Bridge WebSocket
-      const wsUrl = `ws://${window.location.hostname}:8000/broadcast`;
+      const defaultWsProto = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = process.env.NEXT_PUBLIC_BRIDGE_WS_URL || `${defaultWsProto}//${window.location.hostname}:8000/broadcast`;
       try {
         this.broadcastWs = new WebSocket(wsUrl);
         this.broadcastWs.binaryType = 'arraybuffer';

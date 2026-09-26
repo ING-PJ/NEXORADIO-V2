@@ -30,6 +30,44 @@ class RadioStore {
           this.notify();
         }
       });
+
+      // Global synchronization via Supabase Realtime (for Vercel + Supabase serverless mode)
+      if (isSupabaseConfigured && supabase) {
+        // Fetch current station state from database
+        supabase
+          .from('station_state')
+          .select('*')
+          .eq('id', 'current')
+          .single()
+          .then(({ data }) => {
+            if (data) {
+              localStorage.setItem(STATE_KEY, JSON.stringify(data));
+              this.notify();
+            }
+          });
+
+        // Listen for live station updates and incoming requests
+        supabase
+          .channel('nexo_global_realtime')
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'station_state' },
+            (payload) => {
+              if (payload.new) {
+                localStorage.setItem(STATE_KEY, JSON.stringify(payload.new));
+                this.notify();
+              }
+            }
+          )
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'song_requests' },
+            () => {
+              this.notify();
+            }
+          )
+          .subscribe();
+      }
     }
   }
 
