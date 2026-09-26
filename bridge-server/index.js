@@ -2,7 +2,7 @@ const http = require('http');
 const { WebSocketServer } = require('ws');
 const url = require('url');
 
-const PORT = process.env.BRIDGE_PORT || 8000;
+const PORT = process.env.PORT || process.env.BRIDGE_PORT || 8000;
 const ICECAST_URL = process.env.ICECAST_SOURCE_URL || process.env.ICECAST_URL;
 
 let headerChunk = null;
@@ -187,7 +187,7 @@ function setupIcecastUpstream() {
   }
 }
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`=================================================`);
   console.log(`NEXO RADIO Audio Source & Stream Bridge Active`);
   console.log(`- HTTP Stream URL: http://localhost:${PORT}/live`);
