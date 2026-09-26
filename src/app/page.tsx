@@ -124,7 +124,7 @@ export default function NexoRadioPublicPage() {
           {/* Sidebar Footer */}
           <div className="space-y-6">
             <Link
-              href="/studio"
+              href="/studio/login"
               className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold text-gray-400 hover:text-[#e5b45f] bg-white/5 hover:bg-[#e5b45f]/10 border border-white/5 hover:border-[#e5b45f]/30 transition-all"
             >
               <span>Acceso NEXO Studio</span>
@@ -232,7 +232,7 @@ export default function NexoRadioPublicPage() {
                 Chat
               </button>
               <Link
-                href="/studio"
+                href="/studio/login"
                 className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl font-medium text-sm text-gray-400 hover:text-[#e5b45f]"
               >
                 <span>Acceso NEXO Studio</span>

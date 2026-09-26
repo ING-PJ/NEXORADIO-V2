@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -14,21 +14,49 @@ export default function StudioLoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // If already logged in, redirect straight to studio
+  useEffect(() => {
+    const checkSession = async () => {
+      if (isSupabaseConfigured && supabase) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session && session.user) {
+          router.replace('/studio');
+          return;
+        }
+      }
+      const local = typeof window !== 'undefined' ? localStorage.getItem('nexo_studio_session') : null;
+      if (local && !isSupabaseConfigured) {
+        router.replace('/studio');
+      }
+    };
+    checkSession();
+  }, [router]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setErrorMsg('');
 
     if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) {
-        setErrorMsg(error.message);
+        setErrorMsg(error.message === 'Invalid login credentials' 
+          ? 'Correo o contraseña incorrectos. Verifica tus datos de Supabase.'
+          : error.message);
         setIsLoading(false);
         return;
+      }
+
+      if (data && data.user) {
+        localStorage.setItem('nexo_studio_session', JSON.stringify({
+          email: data.user.email,
+          role: 'locutor',
+          name: data.user.user_metadata?.name || 'Locutor NEXO',
+        }));
       }
     } else {
       // Local session simulation for developer / testing
@@ -39,7 +67,7 @@ export default function StudioLoginPage() {
       }));
     }
 
-    router.push('/studio');
+    router.replace('/studio');
   };
 
   const handleQuickDemo = () => {
@@ -48,7 +76,7 @@ export default function StudioLoginPage() {
       role: 'locutor',
       name: 'NEXO RADIO Locutor',
     }));
-    router.push('/studio');
+    router.replace('/studio');
   };
 
   return (
@@ -176,21 +204,23 @@ export default function StudioLoginPage() {
             </button>
           </form>
 
-          {/* Quick Demo Access */}
-          <div className="pt-2">
-            <div className="relative flex items-center justify-center my-4">
-              <div className="border-t border-white/10 w-full" />
-              <span className="bg-[#0e1015] px-3 text-[11px] text-gray-500 uppercase">o</span>
-            </div>
+          {/* Quick Demo Access (Solo para desarrollo local sin Supabase) */}
+          {!isSupabaseConfigured && (
+            <div className="pt-2">
+              <div className="relative flex items-center justify-center my-4">
+                <div className="border-t border-white/10 w-full" />
+                <span className="bg-[#0e1015] px-3 text-[11px] text-gray-500 uppercase">o</span>
+              </div>
 
-            <button
-              type="button"
-              onClick={handleQuickDemo}
-              className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-white bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#e5b45f]/40 transition-all flex items-center justify-center gap-2"
-            >
-              <span>Acceso directo modo demostración (Locutor)</span>
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={handleQuickDemo}
+                className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-white bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#e5b45f]/40 transition-all flex items-center justify-center gap-2"
+              >
+                <span>Acceso directo modo demostración (Locutor)</span>
+              </button>
+            </div>
+          )}
 
           <div className="text-center text-xs text-gray-500 pt-2">
             ¿No tienes una cuenta?{' '}

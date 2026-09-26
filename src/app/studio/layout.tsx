@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -15,19 +15,90 @@ import {
   ExternalLink,
   Inbox
 } from 'lucide-react';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 export default function StudioLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [userEmail, setUserEmail] = useState('Locutor');
+
+  // Verify authentication on all /studio routes except /studio/login
+  useEffect(() => {
+    if (pathname === '/studio/login') {
+      setIsCheckingAuth(false);
+      return;
+    }
+
+    const verifySession = async () => {
+      // 1. Check Supabase Auth session
+      if (isSupabaseConfigured && supabase) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session && session.user) {
+          setIsAuthenticated(true);
+          setUserEmail(session.user.email || 'Locutor');
+          setIsCheckingAuth(false);
+          return;
+        }
+      }
+
+      // 2. Check local fallback session
+      if (typeof window !== 'undefined') {
+        const local = localStorage.getItem('nexo_studio_session');
+        if (local) {
+          try {
+            const parsed = JSON.parse(local);
+            setIsAuthenticated(true);
+            setUserEmail(parsed.email || 'Locutor');
+            setIsCheckingAuth(false);
+            return;
+          } catch {}
+        }
+      }
+
+      // 3. Not authenticated -> Redirect to login page
+      setIsAuthenticated(false);
+      setIsCheckingAuth(false);
+      router.replace('/studio/login');
+    };
+
+    verifySession();
+  }, [pathname, router]);
 
   // If on login page, don't show the dashboard shell
   if (pathname === '/studio/login') {
     return <>{children}</>;
   }
 
-  const handleLogout = () => {
+  // Show sleek dark loader while verifying auth
+  if (isCheckingAuth) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-[#090a0d]">
+        <div className="flex flex-col items-center gap-4">
+          <img
+            src="/isotipo_nexo.png"
+            alt="NEXO"
+            className="h-12 w-auto animate-pulse filter drop-shadow-[0_0_15px_rgba(229,180,95,0.6)]"
+          />
+          <div className="w-6 h-6 border-2 border-[#e5b45f] border-t-transparent rounded-full animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
+  // If not authenticated and not yet redirected, block content
+  if (!isAuthenticated) {
+    return null;
+  }
+
+  const handleLogout = async () => {
+    if (isSupabaseConfigured && supabase) {
+      await supabase.auth.signOut();
+    }
     localStorage.removeItem('nexo_studio_session');
-    router.push('/studio/login');
+    router.replace('/studio/login');
   };
 
   const navItems: { label: string; href: string; icon: any; match: string[]; disabled?: boolean }[] = [
