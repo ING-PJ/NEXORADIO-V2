@@ -1,9 +1,15 @@
 const http = require('http');
 const { WebSocketServer } = require('ws');
 const url = require('url');
+const fs = require('fs');
+const path = require('path');
 
 const PORT = process.env.PORT || process.env.BRIDGE_PORT || 8000;
 const ICECAST_URL = process.env.ICECAST_SOURCE_URL || process.env.ICECAST_URL;
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
 
 let headerChunk = null;
 let headerContentType = 'audio/mp4';
@@ -18,11 +24,87 @@ const server = http.createServer((req, res) => {
 
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', '*');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(200);
     res.end();
+    return;
+  }
+
+  // File Upload Endpoint: POST /upload?name=song.mp3
+  if (req.method === 'POST' && parsed.pathname === '/upload') {
+    const rawName = parsed.query?.name ? String(parsed.query.name) : 'audio.mp3';
+    const safeExt = path.extname(rawName) || '.mp3';
+    const filename = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}${safeExt}`;
+    const targetPath = path.join(UPLOADS_DIR, filename);
+    const writeStream = fs.createWriteStream(targetPath);
+
+    req.pipe(writeStream);
+
+    writeStream.on('finish', () => {
+      const protocol = req.headers['x-forwarded-proto'] || 'https';
+      const host = req.headers.host || `localhost:${PORT}`;
+      const fileUrl = `${protocol}://${host}/uploads/${filename}`;
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(JSON.stringify({ url: fileUrl, filename }));
+    });
+
+    writeStream.on('error', (err) => {
+      console.error('[Upload] Error saving file:', err);
+      res.writeHead(500, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(JSON.stringify({ error: err.message }));
+    });
+    return;
+  }
+
+  // Serve Uploaded Files: GET /uploads/:filename
+  if (req.method === 'GET' && parsed.pathname.startsWith('/uploads/')) {
+    const filename = path.basename(parsed.pathname);
+    const targetPath = path.join(UPLOADS_DIR, filename);
+
+    if (!fs.existsSync(targetPath)) {
+      res.writeHead(404, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' });
+      res.end('File not found');
+      return;
+    }
+
+    const stat = fs.statSync(targetPath);
+    const total = stat.size;
+    const range = req.headers.range;
+    const isImage = /\.(jpg|jpeg|png|webp)$/i.test(filename);
+    const contentType = isImage ? 'image/jpeg' : 'audio/mpeg';
+
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : total - 1;
+      const chunkSize = end - start + 1;
+
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${total}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': contentType,
+        'Access-Control-Allow-Origin': '*',
+      });
+      fs.createReadStream(targetPath, { start, end }).pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Length': total,
+        'Accept-Ranges': 'bytes',
+        'Content-Type': contentType,
+        'Access-Control-Allow-Origin': '*',
+      });
+      fs.createReadStream(targetPath).pipe(res);
+    }
     return;
   }
 

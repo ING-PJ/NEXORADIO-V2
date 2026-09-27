@@ -104,10 +104,10 @@ CREATE POLICY "Public read playlist_songs" ON public.playlist_songs FOR SELECT U
 CREATE POLICY "Public insert requests" ON public.song_requests FOR INSERT WITH CHECK (true);
 CREATE POLICY "Auth manage requests" ON public.song_requests FOR ALL TO authenticated USING (true);
 
--- 3. Authenticated (DJ/Studio) can manage everything
-CREATE POLICY "Auth manage songs" ON public.songs FOR ALL TO authenticated USING (true);
-CREATE POLICY "Auth manage playlists" ON public.playlists FOR ALL TO authenticated USING (true);
-CREATE POLICY "Auth manage playlist_songs" ON public.playlist_songs FOR ALL TO authenticated USING (true);
+-- 3. Studio / Cabina management
+CREATE POLICY "Public manage songs" ON public.songs FOR ALL USING (true);
+CREATE POLICY "Public manage playlists" ON public.playlists FOR ALL USING (true);
+CREATE POLICY "Public manage playlist_songs" ON public.playlist_songs FOR ALL USING (true);
 CREATE POLICY "Public update station_state" ON public.station_state FOR ALL USING (true);
 
 -- Enable Supabase Realtime for instant station updates
@@ -132,7 +132,24 @@ CREATE POLICY "Public read chat_messages" ON public.chat_messages FOR SELECT USI
 CREATE POLICY "Public insert chat_messages" ON public.chat_messages FOR INSERT WITH CHECK (true);
 ALTER PUBLICATION supabase_realtime ADD TABLE public.chat_messages;
 
--- Storage buckets setup (to run in Supabase Storage SQL editor or API)
--- INSERT INTO storage.buckets (id, name, public) VALUES ('songs', 'songs', true) ON CONFLICT DO NOTHING;
--- INSERT INTO storage.buckets (id, name, public) VALUES ('covers', 'covers', true) ON CONFLICT DO NOTHING;
+-- ==============================================================================
+-- 7. STORAGE BUCKETS (CANCIONES Y PORTADAS EN SUPABASE)
+-- ==============================================================================
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('songs', 'songs', true) 
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('covers', 'covers', true) 
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+-- Políticas de Storage para subir y reproducir canciones
+CREATE POLICY "Public Upload Songs" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'songs');
+CREATE POLICY "Public Read Songs" ON storage.objects FOR SELECT USING (bucket_id = 'songs');
+CREATE POLICY "Public Delete Songs" ON storage.objects FOR DELETE USING (bucket_id = 'songs');
+
+CREATE POLICY "Public Upload Covers" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'covers');
+CREATE POLICY "Public Read Covers" ON storage.objects FOR SELECT USING (bucket_id = 'covers');
+CREATE POLICY "Public Delete Covers" ON storage.objects FOR DELETE USING (bucket_id = 'covers');
+
 

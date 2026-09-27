@@ -117,26 +117,35 @@ class RadioStore {
 
   // --- SONGS ---
   public async getSongs(): Promise<Song[]> {
-    if (typeof window !== 'undefined') {
-      // Purge legacy songs key
-      localStorage.removeItem('nexo_radio_songs_v1');
+    let dbSongs: Song[] = [];
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase.from('songs').select('*').order('created_at', { ascending: false });
+        if (!error && data && data.length > 0) {
+          dbSongs = data as Song[];
+        }
+      } catch (e) {
+        console.warn('Error fetching Supabase songs:', e);
+      }
     }
 
-    let result: Song[] = INITIAL_SONGS;
-
-    if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('songs').select('*').order('created_at', { ascending: false });
-      if (!error && data && data.length > 0) {
-        result = data as Song[];
-      }
-    } else if (typeof window !== 'undefined') {
+    let localSongs: Song[] = [];
+    if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(SONGS_KEY);
       if (saved) {
         try {
-          result = JSON.parse(saved);
+          localSongs = JSON.parse(saved);
         } catch {}
       }
     }
+
+    // Merge INITIAL_SONGS, localSongs, and dbSongs without duplicates by id
+    const songMap = new Map<string, Song>();
+    INITIAL_SONGS.forEach((s) => songMap.set(s.id, s));
+    localSongs.forEach((s) => songMap.set(s.id, s));
+    dbSongs.forEach((s) => songMap.set(s.id, s));
+
+    const result = Array.from(songMap.values());
 
     // Sanitize any dead or blocked external URLs (e.g. Pixabay) to local working MP3s
     const sanitized = result.map((s, idx) => {
@@ -155,24 +164,44 @@ class RadioStore {
   }
 
   public async addSong(song: Omit<Song, 'id' | 'created_at'>): Promise<Song> {
+    // Generate valid RFC4122 UUID so Postgres UUID column constraint never fails
+    const newId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+          const r = (Math.random() * 16) | 0;
+          const v = c === 'x' ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
+        });
+
     const newSong: Song = {
       ...song,
-      id: 'song-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+      id: newId,
       created_at: new Date().toISOString(),
       play_count: 0,
       is_favorite: song.is_favorite ?? false,
     };
 
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('songs').insert(newSong).select().single();
-      if (!error && data) {
-        this.postSync();
-        return data as Song;
+      try {
+        const { data, error } = await supabase.from('songs').insert(newSong).select().single();
+        if (!error && data) {
+          const current = await this.getSongs();
+          const updated = [data as Song, ...current.filter((s) => s.id !== data.id)];
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(SONGS_KEY, JSON.stringify(updated));
+          }
+          this.postSync();
+          return data as Song;
+        } else if (error) {
+          console.warn('Supabase insert song notice:', error.message);
+        }
+      } catch (err) {
+        console.warn('Supabase insert song exception:', err);
       }
     }
 
     const current = await this.getSongs();
-    const updated = [newSong, ...current];
+    const updated = [newSong, ...current.filter((s) => s.id !== newSong.id)];
     if (typeof window !== 'undefined') {
       localStorage.setItem(SONGS_KEY, JSON.stringify(updated));
     }

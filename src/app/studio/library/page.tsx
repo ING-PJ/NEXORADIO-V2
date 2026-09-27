@@ -45,6 +45,8 @@ export default function StudioLibraryPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadDuration, setUploadDuration] = useState(210);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
@@ -98,6 +100,23 @@ export default function StudioLibraryPage() {
     if (e.target.files && e.target.files[0]) {
       const f = e.target.files[0];
       setUploadFile(f);
+      setUploadError(null);
+
+      // Extract duration from audio file metadata
+      try {
+        const audio = new Audio();
+        const objectUrl = URL.createObjectURL(f);
+        audio.src = objectUrl;
+        audio.onloadedmetadata = () => {
+          if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+            setUploadDuration(Math.round(audio.duration));
+          }
+          URL.revokeObjectURL(objectUrl);
+        };
+      } catch (err) {
+        console.warn('Could not read audio duration:', err);
+      }
+
       // Auto-populate title & artist from filename if formatted like "Artist - Title.mp3"
       const nameWithoutExt = f.name.replace(/\.[^/.]+$/, '');
       if (nameWithoutExt.includes(' - ')) {
@@ -123,54 +142,99 @@ export default function StudioLibraryPage() {
     if (!uploadFile && !uploadTitle) return;
 
     setIsUploading(true);
-    setUploadProgress(40);
+    setUploadError(null);
+    setUploadProgress(20);
 
     let audioUrl = '';
 
     if (uploadFile) {
+      // Step 1: Try Supabase Storage
       if (isSupabaseConfigured && supabase) {
-        // Upload to Supabase Storage
-        const fileExt = uploadFile.name.split('.').pop();
-        const filePath = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-        const { data, error } = await supabase.storage.from('songs').upload(filePath, uploadFile);
-        if (!error && data) {
-          const { data: publicData } = supabase.storage.from('songs').getPublicUrl(filePath);
-          audioUrl = publicData.publicUrl;
+        try {
+          setUploadProgress(35);
+          const fileExt = uploadFile.name.split('.').pop() || 'mp3';
+          const filePath = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+          const { data, error } = await supabase.storage.from('songs').upload(filePath, uploadFile);
+          if (!error && data) {
+            const { data: publicData } = supabase.storage.from('songs').getPublicUrl(filePath);
+            if (publicData?.publicUrl) {
+              audioUrl = publicData.publicUrl;
+            }
+          } else if (error) {
+            console.warn('Supabase storage upload notice:', error.message);
+          }
+        } catch (err) {
+          console.warn('Supabase storage upload exception:', err);
         }
       }
 
+      // Step 2: Try Render Bridge Server upload if Supabase storage is unavailable
       if (!audioUrl) {
-        // Local Object URL fallback
+        try {
+          setUploadProgress(55);
+          const bridgeBase = process.env.NEXT_PUBLIC_STREAM_URL
+            ? process.env.NEXT_PUBLIC_STREAM_URL.replace(/\/live.*$/, '')
+            : 'https://nexo-radio-bridge.onrender.com';
+          const res = await fetch(`${bridgeBase}/upload?name=${encodeURIComponent(uploadFile.name)}`, {
+            method: 'POST',
+            body: uploadFile,
+            headers: {
+              'Content-Type': uploadFile.type || 'audio/mpeg',
+            },
+          });
+          if (res.ok) {
+            const json = await res.json();
+            if (json.url) {
+              audioUrl = json.url;
+            }
+          }
+        } catch (err) {
+          console.warn('Bridge server upload exception:', err);
+        }
+      }
+
+      // Step 3: Local fallback
+      if (!audioUrl) {
+        setUploadProgress(75);
         audioUrl = URL.createObjectURL(uploadFile);
       }
     } else {
-      audioUrl = 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3';
+      audioUrl = '/songs/summer.mp3';
     }
 
-    setUploadProgress(80);
+    setUploadProgress(85);
 
-    await radioStore.addSong({
-      title: uploadTitle || 'Nueva Canción',
-      artist: uploadArtist || 'Artista Desconocido',
-      album: uploadAlbum || undefined,
-      genre: uploadGenre,
-      duration: 210, // ~3:30
-      file_url: audioUrl,
-      cover_url: uploadCoverUrl || '/cover_default.webp',
-      file_size: uploadFile?.size || 4500000,
-      is_favorite: uploadFavorite,
-    });
+    try {
+      const added = await radioStore.addSong({
+        title: uploadTitle || 'Nueva Canción',
+        artist: uploadArtist || 'Artista Desconocido',
+        album: uploadAlbum || undefined,
+        genre: uploadGenre,
+        duration: uploadDuration || 210,
+        file_url: audioUrl,
+        cover_url: uploadCoverUrl || '/cover_default.webp',
+        file_size: uploadFile?.size || 4500000,
+        is_favorite: uploadFavorite,
+      });
 
-    setUploadProgress(100);
-    setTimeout(() => {
+      setUploadProgress(100);
+      await loadData();
+      setSelectedSongDetails(added);
+
+      setTimeout(() => {
+        setIsUploading(false);
+        setIsUploadModalOpen(false);
+        setUploadFile(null);
+        setUploadTitle('');
+        setUploadArtist('');
+        setUploadAlbum('');
+        setUploadProgress(0);
+      }, 500);
+    } catch (err: any) {
+      console.error('Error saving song to store:', err);
+      setUploadError(err?.message || 'Error al guardar la canción.');
       setIsUploading(false);
-      setIsUploadModalOpen(false);
-      setUploadFile(null);
-      setUploadTitle('');
-      setUploadArtist('');
-      setUploadAlbum('');
-      setUploadProgress(0);
-    }, 600);
+    }
   };
 
   // Filter songs
@@ -545,6 +609,12 @@ export default function StudioLibraryPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {uploadError && (
+              <div className="mt-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2">
+                <span>{uploadError}</span>
+              </div>
+            )}
 
             <form onSubmit={handleUploadSubmit} className="mt-6 space-y-6">
               {/* Drag & Drop Upload Zone */}
