@@ -143,13 +143,11 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('covers', 'covers', true) 
 ON CONFLICT (id) DO UPDATE SET public = true;
 
--- Políticas de Storage para subir y reproducir canciones
+-- Políticas de Storage (los buckets ya son public = true para lectura/reproducción directa)
 CREATE POLICY "Public Upload Songs" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'songs');
-CREATE POLICY "Public Read Songs" ON storage.objects FOR SELECT USING (bucket_id = 'songs');
 CREATE POLICY "Public Delete Songs" ON storage.objects FOR DELETE USING (bucket_id = 'songs');
 
 CREATE POLICY "Public Upload Covers" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'covers');
-CREATE POLICY "Public Read Covers" ON storage.objects FOR SELECT USING (bucket_id = 'covers');
 CREATE POLICY "Public Delete Covers" ON storage.objects FOR DELETE USING (bucket_id = 'covers');
 
 
