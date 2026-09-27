@@ -16,6 +16,8 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
   const [volume, setVolume] = useState(0.85);
   const [isMuted, setIsMuted] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
+  const [heartAnimation, setHeartAnimation] = useState(false);
+  const [likeToast, setLikeToast] = useState<string | null>(null);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -45,6 +47,71 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
     update();
     return () => unsubscribe();
   }, []);
+
+  // Check if current playing song is in favorites
+  useEffect(() => {
+    let isMounted = true;
+    const checkFavorite = async () => {
+      const songs = await radioStore.getSongs();
+      const current = songs.find(
+        (s) =>
+          (stationState.current_song_id && s.id === stationState.current_song_id) ||
+          (stationState.current_song_title &&
+            s.title.toLowerCase().trim() === stationState.current_song_title.toLowerCase().trim())
+      );
+      if (isMounted) {
+        setIsLiked(Boolean(current?.is_favorite));
+      }
+    };
+    checkFavorite();
+    const unsub = radioStore.subscribe(checkFavorite);
+    return () => {
+      isMounted = false;
+      unsub();
+    };
+  }, [stationState.current_song_id, stationState.current_song_title]);
+
+  const handleToggleFavorite = async () => {
+    try {
+      const songs = await radioStore.getSongs();
+      let activeSong = songs.find(
+        (s) =>
+          (stationState.current_song_id && s.id === stationState.current_song_id) ||
+          (stationState.current_song_title &&
+            s.title.toLowerCase().trim() === stationState.current_song_title.toLowerCase().trim())
+      );
+
+      // If active song is not yet in library, add it with is_favorite = true
+      if (!activeSong && stationState.current_song_title) {
+        activeSong = await radioStore.addSong({
+          title: stationState.current_song_title,
+          artist: stationState.current_song_artist || 'NEXO Radio',
+          genre: 'Pop',
+          file_url: stationState.current_song_url || '/songs/summer.mp3',
+          cover_url: stationState.current_song_cover || '/cover_default.webp',
+          duration: stationState.current_song_duration || 180,
+          is_favorite: true,
+        });
+        setIsLiked(true);
+        setHeartAnimation(true);
+        setLikeToast('¡Guardada en Favoritas!');
+        setTimeout(() => setHeartAnimation(false), 800);
+        setTimeout(() => setLikeToast(null), 3000);
+        return;
+      }
+
+      if (activeSong) {
+        const nextFav = await radioStore.toggleFavorite(activeSong.id);
+        setIsLiked(nextFav);
+        setHeartAnimation(nextFav);
+        setLikeToast(nextFav ? '¡Guardada en Favoritas!' : 'Eliminada de Favoritas');
+        setTimeout(() => setHeartAnimation(false), 800);
+        setTimeout(() => setLikeToast(null), 3000);
+      }
+    } catch (err) {
+      console.error('Error toggling favorite from player:', err);
+    }
+  };
 
   // Stream URL from Render or custom environment
   const LIVE_STREAM_URL = process.env.NEXT_PUBLIC_STREAM_URL || 'https://nexo-radio-bridge.onrender.com/live';
@@ -254,16 +321,32 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
 
       {/* Primary Player Controls */}
       <div className="flex items-center justify-center gap-4 sm:gap-6 mt-6 z-10">
-        {/* Like Button */}
-        <button
-          onClick={() => setIsLiked(!isLiked)}
-          className={`p-2.5 rounded-full transition-transform active:scale-90 ${
-            isLiked ? 'text-rose-500' : 'text-gray-400 hover:text-white'
-          }`}
-          title="Me gusta"
-        >
-          <Heart className={`w-5 h-5 sm:w-6 sm:h-6 ${isLiked ? 'fill-current' : ''}`} />
-        </button>
+        {/* Like Button with Toast */}
+        <div className="relative flex items-center justify-center">
+          <button
+            onClick={handleToggleFavorite}
+            className={`p-2.5 rounded-full transition-all duration-200 active:scale-90 ${
+              isLiked
+                ? 'text-rose-500 hover:text-rose-400 bg-rose-500/10'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+            }`}
+            title={isLiked ? 'Quitar de la playlist de favoritas' : 'Guardar en la playlist de favoritas'}
+            aria-label={isLiked ? 'Quitar de la playlist de favoritas' : 'Guardar en la playlist de favoritas'}
+          >
+            <Heart
+              className={`w-5 h-5 sm:w-6 sm:h-6 transition-transform duration-300 ${
+                isLiked ? 'fill-current' : ''
+              } ${heartAnimation ? 'scale-125 text-rose-500 animate-pulse' : ''}`}
+            />
+          </button>
+
+          {likeToast && (
+            <div className="absolute -top-10 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-neutral-900/95 border border-white/15 text-[11px] font-semibold text-white shadow-2xl flex items-center gap-1.5 whitespace-nowrap animate-in fade-in zoom-in-95 duration-200 pointer-events-none z-30">
+              <Heart className="w-3 h-3 text-rose-500 fill-current" />
+              <span>{likeToast}</span>
+            </div>
+          )}
+        </div>
 
         {/* Previous Track (Disabled in linear radio) */}
         <button

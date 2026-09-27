@@ -13,7 +13,8 @@ import {
   Menu,
   X,
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  Heart
 } from 'lucide-react';
 import PublicPlayer from '@/components/public/PublicPlayer';
 import RequestModal from '@/components/public/RequestModal';
@@ -356,6 +357,21 @@ export default function NexoRadioPublicPage() {
                         {idx === 0 ? 'Sonando ahora' : `Hace ${idx * 4} min`}
                       </span>
                     </div>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        await radioStore.toggleFavorite(song.id);
+                      }}
+                      className={`p-1.5 rounded-lg transition-all active:scale-90 ${
+                        song.is_favorite
+                          ? 'text-rose-500 hover:text-rose-400 bg-rose-500/10'
+                          : 'text-gray-500 hover:text-white hover:bg-white/5'
+                      }`}
+                      title={song.is_favorite ? 'Quitar de Favoritas' : 'Guardar en Favoritas'}
+                      aria-label={song.is_favorite ? 'Quitar de Favoritas' : 'Guardar en Favoritas'}
+                    >
+                      <Heart className={`w-3.5 h-3.5 ${song.is_favorite ? 'fill-current' : ''}`} />
+                    </button>
                   </div>
                 ))}
               </div>

@@ -221,19 +221,45 @@ class RadioStore {
     if (typeof window !== 'undefined') {
       localStorage.setItem(SONGS_KEY, JSON.stringify(updated));
     }
+
+    if (newSong.is_favorite) {
+      await this.syncSongWithFavoritesPlaylist(newSong, true);
+    }
+
     this.postSync();
     return newSong;
   }
 
   public async deleteSong(id: string): Promise<boolean> {
     if (isSupabaseConfigured && supabase) {
-      await supabase.from('songs').delete().eq('id', id);
+      try {
+        await supabase.from('playlist_songs').delete().eq('song_id', id);
+        await supabase.from('songs').delete().eq('id', id);
+      } catch (e) {
+        console.warn('Supabase deleteSong notice:', e);
+      }
     }
     const current = await this.getSongs();
     const updated = current.filter((s) => s.id !== id);
     if (typeof window !== 'undefined') {
       localStorage.setItem(SONGS_KEY, JSON.stringify(updated));
     }
+
+    // Clean up playlists
+    const playlists = await this.getPlaylists();
+    let plChanged = false;
+    playlists.forEach((p) => {
+      if (p.songs && p.songs.some((s) => s.id === id)) {
+        p.songs = p.songs.filter((s) => s.id !== id);
+        p.songs_count = p.songs.length;
+        p.duration_seconds = p.songs.reduce((acc, curr) => acc + (curr.duration || 0), 0);
+        plChanged = true;
+      }
+    });
+    if (plChanged && typeof window !== 'undefined') {
+      localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(playlists));
+    }
+
     this.postSync();
     return true;
   }
@@ -247,38 +273,131 @@ class RadioStore {
     song.is_favorite = newVal;
 
     if (isSupabaseConfigured && supabase) {
-      await supabase.from('songs').update({ is_favorite: newVal }).eq('id', id);
+      try {
+        await supabase.from('songs').update({ is_favorite: newVal }).eq('id', id);
+      } catch (err) {
+        console.warn('Supabase toggleFavorite notice:', err);
+      }
     }
 
     if (typeof window !== 'undefined') {
       localStorage.setItem(SONGS_KEY, JSON.stringify(current));
     }
+
+    // Keep playlist "Favoritas" in sync
+    await this.syncSongWithFavoritesPlaylist(song, newVal);
+
     this.postSync();
     return newVal;
   }
 
+  public async syncSongWithFavoritesPlaylist(song: Song, isFavorite: boolean): Promise<void> {
+    const playlists = await this.getPlaylists();
+    let favPlaylist = playlists.find(
+      (p) =>
+        p.name.trim().toLowerCase() === 'favoritas' ||
+        p.id === 'playlist-1' ||
+        p.id === '11111111-1111-1111-1111-111111111111'
+    );
+
+    if (!favPlaylist) {
+      favPlaylist = await this.createPlaylist('Favoritas', 'Canciones más votadas por los oyentes y el equipo.');
+    }
+
+    if (!favPlaylist) return;
+
+    if (isFavorite) {
+      await this.addSongToPlaylist(favPlaylist.id, song);
+    } else {
+      await this.removeSongFromPlaylist(favPlaylist.id, song.id);
+    }
+  }
+
   // --- PLAYLISTS ---
   public async getPlaylists(): Promise<Playlist[]> {
+    let result: Playlist[] = [];
+
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('playlists').select('*, playlist_songs(position, song:songs(*))');
-      if (!error && data && data.length > 0) {
-        return data.map((p: any) => ({
-          ...p,
-          songs: p.playlist_songs ? p.playlist_songs.sort((a: any, b: any) => a.position - b.position).map((ps: any) => ps.song) : [],
-        })) as Playlist[];
+      try {
+        const { data, error } = await supabase
+          .from('playlists')
+          .select('*, playlist_songs(position, song:songs(*))');
+        if (!error && data && data.length > 0) {
+          result = data.map((p: any) => ({
+            ...p,
+            songs: p.playlist_songs
+              ? p.playlist_songs
+                  .sort((a: any, b: any) => a.position - b.position)
+                  .map((ps: any) => ps.song)
+                  .filter(Boolean)
+              : [],
+          })) as Playlist[];
+        }
+      } catch (e) {
+        console.warn('Supabase getPlaylists notice:', e);
       }
     }
 
-    if (typeof window !== 'undefined') {
+    if (result.length === 0 && typeof window !== 'undefined') {
       const saved = localStorage.getItem(PLAYLISTS_KEY);
       if (saved) {
         try {
-          return JSON.parse(saved);
+          result = JSON.parse(saved);
         } catch {}
       }
-      localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(INITIAL_PLAYLISTS));
     }
-    return INITIAL_PLAYLISTS;
+
+    if (result.length === 0) {
+      result = [...INITIAL_PLAYLISTS];
+    }
+
+    // Always ensure the Favoritas playlist is synchronized with all favorite songs
+    const allSongs = await this.getSongs();
+    const favSongs = allSongs.filter((s) => s.is_favorite);
+    let favPlaylist = result.find(
+      (p) =>
+        p.name.trim().toLowerCase() === 'favoritas' ||
+        p.id === 'playlist-1' ||
+        p.id === '11111111-1111-1111-1111-111111111111'
+    );
+
+    if (favPlaylist) {
+      let changed = false;
+      const playlistSongs = favPlaylist.songs || [];
+
+      // Keep only songs that are still marked as favorite
+      const filtered = playlistSongs.filter((s) => {
+        const liveSong = allSongs.find((item) => item.id === s.id);
+        return liveSong ? liveSong.is_favorite : true;
+      });
+
+      if (filtered.length !== playlistSongs.length) {
+        favPlaylist.songs = filtered;
+        changed = true;
+      }
+
+      // Add any favorite songs that are not yet in the playlist
+      const currentList = favPlaylist.songs || [];
+      favSongs.forEach((song) => {
+        if (!currentList.some((s) => s.id === song.id)) {
+          currentList.push(song);
+          changed = true;
+        }
+      });
+
+      favPlaylist.songs = currentList;
+      favPlaylist.songs_count = currentList.length;
+      favPlaylist.duration_seconds = currentList.reduce(
+        (acc, curr) => acc + (curr.duration || 0),
+        0
+      );
+
+      if (changed && typeof window !== 'undefined') {
+        localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(result));
+      }
+    }
+
+    return result;
   }
 
   public async createPlaylist(name: string, description: string = ''): Promise<Playlist> {
@@ -294,12 +413,16 @@ class RadioStore {
     };
 
     if (isSupabaseConfigured && supabase) {
-      const { data } = await supabase.from('playlists').insert({
-        name,
-        description,
-        cover_url: '/cover_default.webp'
-      }).select().single();
-      if (data) return data;
+      try {
+        const { data } = await supabase.from('playlists').insert({
+          name,
+          description,
+          cover_url: '/cover_default.webp'
+        }).select().single();
+        if (data) return data;
+      } catch (e) {
+        console.warn('Supabase createPlaylist notice:', e);
+      }
     }
 
     const current = await this.getPlaylists();
@@ -317,10 +440,49 @@ class RadioStore {
     if (!target) return;
 
     if (!target.songs) target.songs = [];
+    const isFavPlaylist =
+      target.name.trim().toLowerCase() === 'favoritas' ||
+      target.id === 'playlist-1' ||
+      target.id === '11111111-1111-1111-1111-111111111111';
+
+    const songToAdd = isFavPlaylist ? { ...song, is_favorite: true } : song;
+
     if (!target.songs.some((s) => s.id === song.id)) {
-      target.songs.push(song);
+      target.songs.push(songToAdd);
       target.songs_count = target.songs.length;
       target.duration_seconds = (target.duration_seconds || 0) + (song.duration || 0);
+
+      // If added to Favoritas playlist, ensure song in songs array is also marked as favorite
+      if (isFavPlaylist) {
+        const songs = await this.getSongs();
+        const s = songs.find((item) => item.id === song.id);
+        if (s && !s.is_favorite) {
+          s.is_favorite = true;
+          if (isSupabaseConfigured && supabase) {
+            try {
+              await supabase.from('songs').update({ is_favorite: true }).eq('id', song.id);
+            } catch {}
+          }
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(SONGS_KEY, JSON.stringify(songs));
+          }
+        }
+      }
+
+      if (isSupabaseConfigured && supabase) {
+        try {
+          await supabase.from('playlist_songs').upsert(
+            {
+              playlist_id: playlistId,
+              song_id: song.id,
+              position: target.songs.length,
+            },
+            { onConflict: 'playlist_id,song_id' }
+          );
+        } catch (e) {
+          console.warn('Supabase addSongToPlaylist notice:', e);
+        }
+      }
 
       if (typeof window !== 'undefined') {
         localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(playlists));
@@ -337,6 +499,39 @@ class RadioStore {
     target.songs = target.songs.filter((s) => s.id !== songId);
     target.songs_count = target.songs.length;
     target.duration_seconds = target.songs.reduce((acc, curr) => acc + (curr.duration || 0), 0);
+
+    const isFavPlaylist =
+      target.name.trim().toLowerCase() === 'favoritas' ||
+      target.id === 'playlist-1' ||
+      target.id === '11111111-1111-1111-1111-111111111111';
+
+    if (isFavPlaylist) {
+      const songs = await this.getSongs();
+      const s = songs.find((item) => item.id === songId);
+      if (s && s.is_favorite) {
+        s.is_favorite = false;
+        if (isSupabaseConfigured && supabase) {
+          try {
+            await supabase.from('songs').update({ is_favorite: false }).eq('id', songId);
+          } catch {}
+        }
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(SONGS_KEY, JSON.stringify(songs));
+        }
+      }
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase
+          .from('playlist_songs')
+          .delete()
+          .eq('playlist_id', playlistId)
+          .eq('song_id', songId);
+      } catch (e) {
+        console.warn('Supabase removeSongFromPlaylist notice:', e);
+      }
+    }
 
     if (typeof window !== 'undefined') {
       localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(playlists));
