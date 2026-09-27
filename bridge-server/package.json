@@ -4,6 +4,7 @@
   "description": "NEXO RADIO Audio Source & Streaming Bridge Server",
   "main": "index.js",
   "scripts": {
+    "build": "echo ready",
     "start": "node index.js"
   },
   "dependencies": {
