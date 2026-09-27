@@ -166,9 +166,16 @@ export default function StudioLivePage() {
             <div className="flex items-center justify-between text-xs">
               <span className="text-gray-300 font-semibold flex items-center gap-1.5">
                 <Mic className="w-4 h-4 text-[#e5b45f]" />
-                Micrófono
+                Micrófono {engineState.isMicOnAir ? '(Al Aire)' : '(Muteado)'}
               </span>
-              <span className="text-white font-mono">{Math.round(engineState.micVolume * 100)}%</span>
+              <div className="flex items-center gap-1 font-mono text-xs">
+                {engineState.micVolume > 1 && (
+                  <span className="text-[10px] text-amber-400 font-bold bg-amber-400/10 px-1.5 py-0.5 rounded">
+                    +{Math.round((engineState.micVolume - 1) * 100)}% Boost
+                  </span>
+                )}
+                <span className="text-white font-semibold">{Math.round(engineState.micVolume * 100)}%</span>
+              </div>
             </div>
             {/* Visual Green/Yellow/Red Bar */}
             <div className="h-3 w-full bg-neutral-900 rounded-full overflow-hidden flex gap-0.5 p-0.5">
@@ -178,8 +185,8 @@ export default function StudioLivePage() {
                   className={`flex-1 rounded-xs transition-all duration-75 ${
                     (levels.mic / 100) * 24 > i
                       ? i > 19
-                        ? 'bg-rose-500'
-                        : i > 14
+                        ? 'bg-rose-500 shadow-sm shadow-rose-500/50'
+                        : i > 13
                         ? 'bg-amber-400'
                         : 'bg-emerald-400'
                       : 'bg-neutral-800'
@@ -190,11 +197,12 @@ export default function StudioLivePage() {
             <input
               type="range"
               min="0"
-              max="1"
-              step="0.01"
+              max="2.5"
+              step="0.05"
               value={engineState.micVolume}
               onChange={(e) => audioEngine.setMicVolume(parseFloat(e.target.value))}
               className="w-full h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-[#e5b45f]"
+              title="Ajustar volumen del micrófono (hasta 250%)"
             />
           </div>
 
@@ -203,10 +211,10 @@ export default function StudioLivePage() {
             <div className="flex items-center justify-between text-xs">
               <span className="text-gray-300 font-semibold flex items-center gap-1.5">
                 <Volume2 className="w-4 h-4 text-[#e5b45f]" />
-                Música {engineState.isMicOnAir && <span className="text-[#e5b45f] text-[11px]">(atenuada)</span>}
+                Música {engineState.isMicOnAir && <span className="text-[#e5b45f] text-[11px]">(atenuada a 15%)</span>}
               </span>
               <span className="text-white font-mono">
-                {engineState.isMicOnAir ? '28%' : `${Math.round(engineState.musicVolume * 100)}%`}
+                {engineState.isMicOnAir ? '15%' : `${Math.round(engineState.musicVolume * 100)}%`}
               </span>
             </div>
             <div className="h-3 w-full bg-neutral-900 rounded-full overflow-hidden flex gap-0.5 p-0.5">
@@ -226,11 +234,28 @@ export default function StudioLivePage() {
             <input
               type="range"
               min="0"
-              max="1"
+              max="1.5"
               step="0.01"
               value={engineState.musicVolume}
               onChange={(e) => audioEngine.setMusicVolume(parseFloat(e.target.value))}
               className="w-full h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-[#e5b45f]"
+            />
+          </div>
+
+          {/* Master Volume */}
+          <div className="space-y-2 pt-2 border-t border-white/5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-400 font-semibold">Master Salida</span>
+              <span className="text-white font-mono">{Math.round(engineState.masterVolume * 100)}%</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="1.5"
+              step="0.01"
+              value={engineState.masterVolume}
+              onChange={(e) => audioEngine.setMasterVolume(parseFloat(e.target.value))}
+              className="w-full h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-white"
             />
           </div>
         </div>

@@ -318,9 +318,16 @@ export default function StudioDashboardPage() {
             <div className="flex items-center justify-between text-xs">
               <span className="flex items-center gap-1.5 text-gray-300 font-medium">
                 <Mic className="w-3.5 h-3.5 text-[#e5b45f]" />
-                Micrófono {engineState.isMicOnAir ? '(Activo)' : '(Inactivo)'}
+                Micrófono {engineState.isMicOnAir ? '(Al Aire)' : '(Muteado)'}
               </span>
-              <span className="font-mono text-gray-400">{Math.round(engineState.micVolume * 100)}%</span>
+              <div className="flex items-center gap-1 font-mono text-xs">
+                {engineState.micVolume > 1 && (
+                  <span className="text-[10px] text-amber-400 font-bold bg-amber-400/10 px-1.5 py-0.5 rounded">
+                    +{Math.round((engineState.micVolume - 1) * 100)}% Boost
+                  </span>
+                )}
+                <span className="text-white font-semibold">{Math.round(engineState.micVolume * 100)}%</span>
+              </div>
             </div>
             {/* Visual VU Meter bar */}
             <div className="h-2 w-full bg-neutral-900 rounded-full overflow-hidden flex gap-0.5 p-0.5">
@@ -333,7 +340,9 @@ export default function StudioDashboardPage() {
                     className={`flex-1 rounded-sm transition-all duration-75 ${
                       isActive
                         ? isPeak
-                          ? 'bg-rose-500'
+                          ? 'bg-rose-500 shadow-sm shadow-rose-500/50'
+                          : i > 11
+                          ? 'bg-amber-400'
                           : 'bg-emerald-400'
                         : 'bg-neutral-800'
                     }`}
@@ -344,11 +353,12 @@ export default function StudioDashboardPage() {
             <input
               type="range"
               min="0"
-              max="1"
-              step="0.01"
+              max="2.5"
+              step="0.05"
               value={engineState.micVolume}
               onChange={(e) => audioEngine.setMicVolume(parseFloat(e.target.value))}
-              className="w-full h-1 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-[#e5b45f]"
+              className="w-full h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-[#e5b45f]"
+              title="Ajustar ganancia del micrófono (hasta 250%)"
             />
           </div>
 
@@ -357,9 +367,11 @@ export default function StudioDashboardPage() {
             <div className="flex items-center justify-between text-xs">
               <span className="flex items-center gap-1.5 text-gray-300 font-medium">
                 <Volume2 className="w-3.5 h-3.5 text-[#e5b45f]" />
-                Música {engineState.isMicOnAir && <span className="text-[#e5b45f]">(atenuada)</span>}
+                Música {engineState.isMicOnAir && <span className="text-[#e5b45f] text-[11px]">(atenuada a 15%)</span>}
               </span>
-              <span className="font-mono text-gray-400">{Math.round(engineState.musicVolume * 100)}%</span>
+              <span className="font-mono text-gray-400">
+                {engineState.isMicOnAir ? '15%' : `${Math.round(engineState.musicVolume * 100)}%`}
+              </span>
             </div>
             {/* Visual VU Meter bar */}
             <div className="h-2 w-full bg-neutral-900 rounded-full overflow-hidden flex gap-0.5 p-0.5">
@@ -383,11 +395,11 @@ export default function StudioDashboardPage() {
             <input
               type="range"
               min="0"
-              max="1"
+              max="1.5"
               step="0.01"
               value={engineState.musicVolume}
               onChange={(e) => audioEngine.setMusicVolume(parseFloat(e.target.value))}
-              className="w-full h-1 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-[#e5b45f]"
+              className="w-full h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-[#e5b45f]"
             />
           </div>
 
@@ -400,11 +412,11 @@ export default function StudioDashboardPage() {
             <input
               type="range"
               min="0"
-              max="1"
+              max="1.5"
               step="0.01"
               value={engineState.masterVolume}
               onChange={(e) => audioEngine.setMasterVolume(parseFloat(e.target.value))}
-              className="w-full h-1 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-white"
+              className="w-full h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-white"
             />
           </div>
         </div>

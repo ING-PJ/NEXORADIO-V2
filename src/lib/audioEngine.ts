@@ -17,6 +17,9 @@ class AudioEngine {
 
   private micStream: MediaStream | null = null;
   private micSourceNode: MediaStreamAudioSourceNode | null = null;
+  private micFilterNode: BiquadFilterNode | null = null;
+  private micPreampNode: GainNode | null = null;
+  private micCompressorNode: DynamicsCompressorNode | null = null;
   private masterDestination: MediaStreamAudioDestinationNode | null = null;
 
   private mediaRecorder: MediaRecorder | null = null;
@@ -26,10 +29,10 @@ class AudioEngine {
   private isBroadcasting = false;
   private isMicOnAir = false;
   private needsUserInteraction = false;
-  private musicVolume = 0.8;
-  private micVolume = 0.8;
+  private musicVolume = 0.85;
+  private micVolume = 1.3; // Default 130% boost for clear radio presence
   private masterVolume = 1.0;
-  private duckedMusicRatio = 0.28; // 28% ducking
+  private duckedMusicRatio = 0.15; // 15% ducking when speaking
 
   private currentSong: Song | null = null;
   private isPlaying = false;
@@ -42,6 +45,16 @@ class AudioEngine {
 
   constructor() {
     if (typeof window !== 'undefined') {
+      const savedMicVol = localStorage.getItem('nexo_mic_volume');
+      if (savedMicVol) {
+        const parsed = parseFloat(savedMicVol);
+        if (!isNaN(parsed) && parsed >= 0) this.micVolume = parsed;
+      }
+      const savedMusicVol = localStorage.getItem('nexo_music_volume');
+      if (savedMusicVol) {
+        const parsed = parseFloat(savedMusicVol);
+        if (!isNaN(parsed) && parsed >= 0) this.musicVolume = parsed;
+      }
       window.addEventListener('beforeunload', () => {
         // Automatically ensure mic is taken off the air on page reload
         radioStore.updateStationState({ is_mic_active: false });
@@ -124,7 +137,7 @@ class AudioEngine {
     const micBuf = new Uint8Array(32);
     const masterBuf = new Uint8Array(32);
 
-    const calcLevel = (analyser: AnalyserNode | null, buf: any): number => {
+    const calcLevel = (analyser: AnalyserNode | null, buf: any, sensitivity: number = 1.4): number => {
       if (!analyser) return 0;
       analyser.getByteFrequencyData(buf);
       let sum = 0;
@@ -132,15 +145,15 @@ class AudioEngine {
         sum += buf[i];
       }
       const avg = sum / buf.length;
-      return Math.min(100, Math.round((avg / 255) * 100 * 1.4));
+      return Math.min(100, Math.round((avg / 255) * 100 * sensitivity));
     };
 
     const loop = () => {
       if (this.onLevelCallbacks.size > 0) {
         const levels: AudioLevels = {
-          music: this.isPlaying ? calcLevel(this.musicAnalyser, musicBuf) : 0,
-          mic: this.isMicOnAir ? calcLevel(this.micAnalyser, micBuf) : 0,
-          master: calcLevel(this.masterAnalyser, masterBuf),
+          music: this.isPlaying ? calcLevel(this.musicAnalyser, musicBuf, 1.4) : 0,
+          mic: this.isMicOnAir ? calcLevel(this.micAnalyser, micBuf, 2.2) : 0,
+          master: calcLevel(this.masterAnalyser, masterBuf, 1.4),
         };
         this.onLevelCallbacks.forEach((cb) => cb(levels));
       }
@@ -297,12 +310,35 @@ class AudioEngine {
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
-            autoGainControl: true,
+            autoGainControl: false, // We use a professional broadcast compressor instead of browser auto-suppression
           },
         });
 
         this.micSourceNode = this.ctx.createMediaStreamSource(this.micStream);
-        this.micSourceNode.connect(this.micGainNode);
+
+        // Highpass Filter at 80Hz (cuts rumble, air noise, and table thumps)
+        this.micFilterNode = this.ctx.createBiquadFilter();
+        this.micFilterNode.type = 'highpass';
+        this.micFilterNode.frequency.setValueAtTime(80, this.ctx.currentTime);
+
+        // Preamp Boost (+6dB ~ 1.8x) so voice is loud and punchy
+        this.micPreampNode = this.ctx.createGain();
+        this.micPreampNode.gain.setValueAtTime(1.8, this.ctx.currentTime);
+
+        // Radio Voice Dynamics Compressor (brings soft speech up, stops peaks from distorting)
+        this.micCompressorNode = this.ctx.createDynamicsCompressor();
+        this.micCompressorNode.threshold.setValueAtTime(-24, this.ctx.currentTime);
+        this.micCompressorNode.knee.setValueAtTime(10, this.ctx.currentTime);
+        this.micCompressorNode.ratio.setValueAtTime(5, this.ctx.currentTime);
+        this.micCompressorNode.attack.setValueAtTime(0.003, this.ctx.currentTime);
+        this.micCompressorNode.release.setValueAtTime(0.06, this.ctx.currentTime);
+
+        // Signal Chain: micSource -> filter -> preamp -> compressor -> micGainNode
+        this.micSourceNode.connect(this.micFilterNode);
+        this.micFilterNode.connect(this.micPreampNode);
+        this.micPreampNode.connect(this.micCompressorNode);
+        this.micCompressorNode.connect(this.micGainNode);
+
         if (this.masterGainNode) {
           this.micGainNode.connect(this.masterGainNode);
         }
@@ -312,20 +348,20 @@ class AudioEngine {
       }
 
       const now = this.ctx.currentTime;
-      // 2. Duck music smoothly to ~25-30% in 400ms
+      // 2. Duck music smoothly to 15% in 350ms
       const targetMusicGain = this.musicVolume * this.duckedMusicRatio;
       this.musicGainNode.gain.cancelScheduledValues(now);
       this.musicGainNode.gain.setValueAtTime(this.musicGainNode.gain.value, now);
-      this.musicGainNode.gain.linearRampToValueAtTime(targetMusicGain, now + 0.4);
+      this.musicGainNode.gain.linearRampToValueAtTime(targetMusicGain, now + 0.35);
 
-      // 3. Ramp mic in over 300ms
+      // 3. Ramp mic in over 250ms
       this.micGainNode.gain.cancelScheduledValues(now);
       this.micGainNode.gain.setValueAtTime(this.micGainNode.gain.value, now);
-      this.micGainNode.gain.linearRampToValueAtTime(this.micVolume, now + 0.3);
+      this.micGainNode.gain.linearRampToValueAtTime(this.micVolume, now + 0.25);
 
-      // Mute local monitor speaker for mic to prevent echo loop in studio room
+      // Lower monitor speaker for mic to prevent feedback in studio
       if (this.monitorGainNode) {
-        this.monitorGainNode.gain.setValueAtTime(0.5, now);
+        this.monitorGainNode.gain.setValueAtTime(0.35, now);
       }
 
       this.isMicOnAir = true;
@@ -343,15 +379,15 @@ class AudioEngine {
 
     const now = this.ctx.currentTime;
 
-    // 1. Fade out microphone in 300ms
+    // 1. Fade out microphone in 250ms
     this.micGainNode.gain.cancelScheduledValues(now);
     this.micGainNode.gain.setValueAtTime(this.micGainNode.gain.value, now);
-    this.micGainNode.gain.linearRampToValueAtTime(0.0001, now + 0.3);
+    this.micGainNode.gain.linearRampToValueAtTime(0.0001, now + 0.25);
 
-    // 2. Restore normal music volume smoothly in 800ms
+    // 2. Restore normal music volume smoothly in 700ms
     this.musicGainNode.gain.cancelScheduledValues(now);
     this.musicGainNode.gain.setValueAtTime(this.musicGainNode.gain.value, now);
-    this.musicGainNode.gain.linearRampToValueAtTime(this.musicVolume, now + 0.8);
+    this.musicGainNode.gain.linearRampToValueAtTime(this.musicVolume, now + 0.7);
 
     // Restore monitor volume
     if (this.monitorGainNode) {
@@ -373,28 +409,42 @@ class AudioEngine {
 
   // --- VOLUME FADERS ---
   public setMusicVolume(vol: number) {
-    this.musicVolume = Math.max(0, Math.min(1, vol));
+    this.musicVolume = Math.max(0, Math.min(1.5, vol));
     if (this.musicGainNode && this.ctx) {
       const now = this.ctx.currentTime;
       const effective = this.isMicOnAir ? this.musicVolume * this.duckedMusicRatio : this.musicVolume;
+      this.musicGainNode.gain.cancelScheduledValues(now);
       this.musicGainNode.gain.linearRampToValueAtTime(effective, now + 0.05);
+    }
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('nexo_music_volume', this.musicVolume.toString());
+      } catch {}
     }
     this.notify();
   }
 
   public setMicVolume(vol: number) {
-    this.micVolume = Math.max(0, Math.min(1, vol));
+    this.micVolume = Math.max(0, Math.min(2.5, vol));
     if (this.micGainNode && this.ctx && this.isMicOnAir) {
       const now = this.ctx.currentTime;
+      this.micGainNode.gain.cancelScheduledValues(now);
       this.micGainNode.gain.linearRampToValueAtTime(this.micVolume, now + 0.05);
+    }
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('nexo_mic_volume', this.micVolume.toString());
+      } catch {}
     }
     this.notify();
   }
 
   public setMasterVolume(vol: number) {
-    this.masterVolume = Math.max(0, Math.min(1, vol));
+    this.masterVolume = Math.max(0, Math.min(1.5, vol));
     if (this.masterGainNode && this.ctx) {
-      this.masterGainNode.gain.setValueAtTime(this.masterVolume, this.ctx.currentTime);
+      const now = this.ctx.currentTime;
+      this.masterGainNode.gain.cancelScheduledValues(now);
+      this.masterGainNode.gain.linearRampToValueAtTime(this.masterVolume, now + 0.05);
     }
     this.notify();
   }
