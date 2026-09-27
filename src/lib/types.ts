@@ -55,3 +55,13 @@ export interface AudioLevels {
   music: number;   // 0 - 100
   master: number;  // 0 - 100
 }
+
+export interface ChatMessage {
+  id: string;
+  user_name: string;
+  text: string;
+  created_at: string;
+  is_dj?: boolean;
+  user_id?: string;
+}
+

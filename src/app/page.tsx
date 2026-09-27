@@ -17,7 +17,9 @@ import {
 } from 'lucide-react';
 import PublicPlayer from '@/components/public/PublicPlayer';
 import RequestModal from '@/components/public/RequestModal';
+import { LiveChatView, LiveChatDrawer } from '@/components/public/LiveChat';
 import { radioStore } from '@/lib/radioStore';
+import { chatStore } from '@/lib/chatStore';
 import { Song, StationState } from '@/lib/types';
 
 export default function NexoRadioPublicPage() {
@@ -25,15 +27,9 @@ export default function NexoRadioPublicPage() {
   const [recentSongs, setRecentSongs] = useState<Song[]>([]);
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
-  const [chatMessage, setChatMessage] = useState('');
-  const [chatMessages, setChatMessages] = useState([
-    { id: 1, user: 'Sofía', time: 'Hace 1 min', text: '¡Qué buena canción! ☀️' },
-    { id: 2, user: 'Carlos', time: 'Hace 2 min', text: 'NEXO siempre con la mejor música 🎧' },
-    { id: 3, user: 'Martina', time: 'Hace 3 min', text: 'Este tema nunca pasa de moda ❤️' },
-    { id: 4, user: 'Alex', time: 'Hace 4 min', text: 'Saludos desde Medellín 🇨🇴' },
-    { id: 5, user: 'Valentina', time: 'Hace 5 min', text: 'La radio perfecta para mi día ✨' },
-  ]);
 
   useEffect(() => {
     const update = async () => {
@@ -46,20 +42,13 @@ export default function NexoRadioPublicPage() {
     return () => unsubscribe();
   }, []);
 
-  const handleSendChat = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatMessage.trim()) return;
-    setChatMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        user: 'Tú',
-        time: 'Ahora',
-        text: chatMessage.trim(),
-      },
-    ]);
-    setChatMessage('');
-  };
+  useEffect(() => {
+    const updateUnread = () => {
+      setUnreadChatCount(chatStore.getUnreadCount());
+    };
+    const unsubscribeChat = chatStore.subscribe(updateUnread);
+    return () => unsubscribeChat();
+  }, []);
 
   return (
     <div className="relative min-h-screen bg-[#07080b] text-[#f3f4f6] flex flex-col font-sans overflow-x-hidden">
@@ -104,11 +93,18 @@ export default function NexoRadioPublicPage() {
               </button>
 
               <button
-                onClick={() => {}}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-all"
+                onClick={() => setIsChatOpen(true)}
+                className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-medium text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-all"
               >
-                <MessageSquare className="w-5 h-5" />
-                Chat
+                <div className="flex items-center gap-3">
+                  <MessageSquare className="w-5 h-5 text-[#e5b45f]" />
+                  <span>Chat en vivo</span>
+                </div>
+                {unreadChatCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-[#e5b45f] text-black text-[10px] font-bold">
+                    {unreadChatCount}
+                  </span>
+                )}
               </button>
 
               <button
@@ -225,11 +221,21 @@ export default function NexoRadioPublicPage() {
                 Programación
               </button>
               <button
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl font-medium text-sm text-gray-400"
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  setIsChatOpen(true);
+                }}
+                className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl font-medium text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-all"
               >
-                <MessageSquare className="w-4 h-4" />
-                Chat
+                <div className="flex items-center gap-3">
+                  <MessageSquare className="w-4 h-4 text-[#e5b45f]" />
+                  Chat en vivo
+                </div>
+                {unreadChatCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-[#e5b45f] text-black text-[10px] font-bold">
+                    {unreadChatCount}
+                  </span>
+                )}
               </button>
               <Link
                 href="/studio/login"
@@ -271,43 +277,9 @@ export default function NexoRadioPublicPage() {
 
               {/* Right Column (Desktop Chat & Next Programs) */}
               <div className="hidden xl:flex xl:col-span-3 flex-col gap-4">
-                {/* Chat Preview Widget */}
-                <div className="rounded-2xl glass-panel p-4 border border-white/5 flex flex-col h-64">
-                  <div className="flex items-center justify-between pb-2 border-b border-white/10">
-                    <span className="text-xs font-semibold text-white">Chat en vivo</span>
-                    <span className="text-[10px] text-emerald-400 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      Únete a la conversación
-                    </span>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto space-y-2 py-2 pr-1">
-                    {chatMessages.map((msg) => (
-                      <div key={msg.id} className="text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-gray-200">{msg.user}</span>
-                          <span className="text-[10px] text-gray-500">{msg.time}</span>
-                        </div>
-                        <p className="text-gray-400 mt-0.5">{msg.text}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  <form onSubmit={handleSendChat} className="mt-2 flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={chatMessage}
-                      onChange={(e) => setChatMessage(e.target.value)}
-                      placeholder="Escribe un mensaje..."
-                      className="flex-1 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#e5b45f]"
-                    />
-                    <button
-                      type="submit"
-                      className="p-1.5 rounded-xl bg-[#e5b45f] text-black hover:bg-[#f3c87a] transition-all"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                    </button>
-                  </form>
+                {/* Real-time Live Chat Widget */}
+                <div className="rounded-2xl glass-panel border border-white/5 overflow-hidden flex flex-col h-[340px] shadow-xl">
+                  <LiveChatView isCompact />
                 </div>
 
                 {/* Próximos Programas Widget */}
@@ -400,8 +372,18 @@ export default function NexoRadioPublicPage() {
               <Calendar className="w-5 h-5" />
               <span className="text-[10px] font-medium">Programación</span>
             </button>
-            <button className="flex flex-col items-center gap-1 text-gray-400">
-              <MessageSquare className="w-5 h-5" />
+            <button
+              onClick={() => setIsChatOpen(true)}
+              className="relative flex flex-col items-center gap-1 text-gray-400 hover:text-[#e5b45f] transition-colors"
+            >
+              <div className="relative">
+                <MessageSquare className="w-5 h-5" />
+                {unreadChatCount > 0 && (
+                  <span className="absolute -top-1 -right-2 px-1.5 py-0.2 rounded-full bg-[#e5b45f] text-black text-[9px] font-bold animate-pulse">
+                    {unreadChatCount}
+                  </span>
+                )}
+              </div>
               <span className="text-[10px] font-medium">Chat</span>
             </button>
             <button className="flex flex-col items-center gap-1 text-gray-400">
@@ -411,6 +393,12 @@ export default function NexoRadioPublicPage() {
           </nav>
         </div>
       </div>
+
+      {/* Live Chat Drawer (Mobile / Tablet / Full modal) */}
+      <LiveChatDrawer
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+      />
 
       {/* Song Request Modal */}
       <RequestModal

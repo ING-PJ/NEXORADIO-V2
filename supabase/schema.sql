@@ -114,6 +114,25 @@ CREATE POLICY "Public update station_state" ON public.station_state FOR ALL USIN
 ALTER PUBLICATION supabase_realtime ADD TABLE public.station_state;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.song_requests;
 
+-- ==============================================================================
+-- 6. TABLA DE MENSAJES DE CHAT EN VIVO (OPCIONAL PARA HISTORIAL PERMANENTE)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.chat_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_name TEXT NOT NULL,
+  user_avatar TEXT,
+  text TEXT NOT NULL,
+  is_dj BOOLEAN DEFAULT FALSE,
+  user_id TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read chat_messages" ON public.chat_messages FOR SELECT USING (true);
+CREATE POLICY "Public insert chat_messages" ON public.chat_messages FOR INSERT WITH CHECK (true);
+ALTER PUBLICATION supabase_realtime ADD TABLE public.chat_messages;
+
 -- Storage buckets setup (to run in Supabase Storage SQL editor or API)
 -- INSERT INTO storage.buckets (id, name, public) VALUES ('songs', 'songs', true) ON CONFLICT DO NOTHING;
 -- INSERT INTO storage.buckets (id, name, public) VALUES ('covers', 'covers', true) ON CONFLICT DO NOTHING;
+

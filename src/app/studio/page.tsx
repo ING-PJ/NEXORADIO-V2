@@ -23,10 +23,12 @@ import {
   Send,
   Sliders,
   MoreVertical,
-  Heart
+  Heart,
+  MessageSquare
 } from 'lucide-react';
 import { audioEngine } from '@/lib/audioEngine';
 import { radioStore } from '@/lib/radioStore';
+import { LiveChatView } from '@/components/public/LiveChat';
 import { Song, StationState, AudioLevels, Playlist } from '@/lib/types';
 
 export default function StudioDashboardPage() {
@@ -37,7 +39,7 @@ export default function StudioDashboardPage() {
   const [allSongs, setAllSongs] = useState<Song[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [searchLibrary, setSearchLibrary] = useState('');
-  const [activeTab, setActiveTab] = useState<'biblioteca' | 'playlists'>('biblioteca');
+  const [activeTab, setActiveTab] = useState<'biblioteca' | 'playlists' | 'chat'>('biblioteca');
   const [micError, setMicError] = useState('');
   const [isBroadcasting, setIsBroadcasting] = useState(false);
 
@@ -531,23 +533,45 @@ export default function StudioDashboardPage() {
                 >
                   Playlists
                 </button>
+                <button
+                  onClick={() => setActiveTab('chat')}
+                  className={`text-xs font-bold transition-colors pb-1 border-b-2 flex items-center gap-1.5 ${
+                    activeTab === 'chat'
+                      ? 'text-white border-[#e5b45f]'
+                      : 'text-gray-400 border-transparent hover:text-white'
+                  }`}
+                >
+                  <MessageSquare className="w-3.5 h-3.5 text-[#e5b45f]" />
+                  Chat en vivo
+                </button>
               </div>
 
-              <div className="relative w-48">
-                <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
-                <input
-                  type="text"
-                  value={searchLibrary}
-                  onChange={(e) => setSearchLibrary(e.target.value)}
-                  placeholder="Buscar tracks..."
-                  className="w-full pl-7 pr-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#e5b45f]"
-                />
-              </div>
+              {activeTab !== 'chat' ? (
+                <div className="relative w-48">
+                  <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input
+                    type="text"
+                    value={searchLibrary}
+                    onChange={(e) => setSearchLibrary(e.target.value)}
+                    placeholder="Buscar tracks..."
+                    className="w-full pl-7 pr-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#e5b45f]"
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 text-[11px] text-[#e5b45f] font-semibold bg-[#e5b45f]/10 border border-[#e5b45f]/30 px-2.5 py-1 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  Modo DJ Oficial
+                </div>
+              )}
             </div>
 
-            {/* List */}
+            {/* List / Chat Tab Content */}
             <div className="mt-4 space-y-2 max-h-72 overflow-y-auto pr-1">
-              {activeTab === 'biblioteca' ? (
+              {activeTab === 'chat' ? (
+                <div className="h-72 rounded-2xl overflow-hidden border border-white/10">
+                  <LiveChatView isDj={true} isCompact />
+                </div>
+              ) : activeTab === 'biblioteca' ? (
                 filteredSongs.map((song) => (
                   <div
                     key={song.id}
