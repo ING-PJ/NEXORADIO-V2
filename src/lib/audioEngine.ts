@@ -379,27 +379,37 @@ class AudioEngine {
       this.mediaRecorder = new MediaRecorder(stream, options);
 
       // Connect to Source Bridge WebSocket
-      const defaultWsProto = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = process.env.NEXT_PUBLIC_BRIDGE_WS_URL || `${defaultWsProto}//${window.location.hostname}:8000/broadcast`;
+      const defaultWsUrl = 'wss://nexo-radio-bridge.onrender.com/broadcast';
+      const wsUrl = process.env.NEXT_PUBLIC_BRIDGE_WS_URL || defaultWsUrl;
+      const initialChunkQueue: ArrayBuffer[] = [];
+
       try {
         this.broadcastWs = new WebSocket(wsUrl);
         this.broadcastWs.binaryType = 'arraybuffer';
 
         this.broadcastWs.onopen = () => {
           console.log('Connected to NEXO Audio Bridge Server at', wsUrl);
+          while (initialChunkQueue.length > 0) {
+            const chunk = initialChunkQueue.shift();
+            if (chunk) this.broadcastWs?.send(chunk);
+          }
         };
 
         this.broadcastWs.onerror = (e) => {
-          console.warn('Bridge server not yet reachable at port 8000. Operating in local mode.', e);
+          console.warn('Bridge server error notice:', e);
         };
       } catch (wsErr) {
         console.warn('Could not establish WebSocket to bridge:', wsErr);
       }
 
       this.mediaRecorder.ondataavailable = async (e) => {
-        if (e.data && e.data.size > 0 && this.broadcastWs && this.broadcastWs.readyState === WebSocket.OPEN) {
+        if (e.data && e.data.size > 0) {
           const buffer = await e.data.arrayBuffer();
-          this.broadcastWs.send(buffer);
+          if (this.broadcastWs && this.broadcastWs.readyState === WebSocket.OPEN) {
+            this.broadcastWs.send(buffer);
+          } else {
+            initialChunkQueue.push(buffer);
+          }
         }
       };
 

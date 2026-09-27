@@ -93,6 +93,11 @@ export default function StudioDashboardPage() {
         audioEngine.exitOnAir();
       } else {
         await audioEngine.enterOnAir();
+        // If not broadcasting yet, automatically start streaming to bridge
+        if (!engineState.isBroadcasting) {
+          audioEngine.startBroadcasting();
+          setIsBroadcasting(true);
+        }
       }
     } catch (err: any) {
       setMicError('Acceso al micrófono denegado o no disponible en este dispositivo.');

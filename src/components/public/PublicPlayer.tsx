@@ -126,12 +126,14 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
       setIsPlaying(false);
     } else {
       setIsLoading(true);
-      const streamUrl = process.env.NEXT_PUBLIC_STREAM_URL;
+      const defaultStreamUrl = 'https://nexo-radio-bridge.onrender.com/live';
+      const streamUrl = process.env.NEXT_PUBLIC_STREAM_URL || defaultStreamUrl;
 
-      // If external stream URL is defined, connect to it
-      if (streamUrl) {
+      // If external stream URL is defined and station is live, connect to it
+      if (streamUrl && stationState.is_live) {
         try {
           audioRef.current.src = `${streamUrl}?t=${Date.now()}`;
+          audioRef.current.volume = isMuted ? 0 : (volume || 0.85);
           audioRef.current.load();
           await audioRef.current.play();
           setIsPlaying(true);
