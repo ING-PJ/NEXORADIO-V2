@@ -238,20 +238,26 @@ export default function StudioLibraryPage() {
   };
 
   // Filter songs
-  const filteredSongs = songs.filter((s) => {
-    if (filterTab === 'favoritas' && !s.is_favorite) return false;
-    if (filterTab === 'mas_escuchadas' && (s.play_count || 0) < 1000) return false;
-    if (genreFilter !== 'todos' && s.genre.toLowerCase() !== genreFilter.toLowerCase()) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      return (
-        s.title.toLowerCase().includes(q) ||
-        s.artist.toLowerCase().includes(q) ||
-        (s.album && s.album.toLowerCase().includes(q))
-      );
-    }
-    return true;
-  });
+  const filteredSongs = songs
+    .filter((s) => {
+      if (filterTab === 'favoritas' && !s.is_favorite) return false;
+      if (filterTab === 'mas_escuchadas' && (s.play_count || 0) < 1000) return false;
+      if (genreFilter !== 'todos' && s.genre.toLowerCase() !== genreFilter.toLowerCase()) return false;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        return (
+          s.title.toLowerCase().includes(q) ||
+          s.artist.toLowerCase().includes(q) ||
+          (s.album && s.album.toLowerCase().includes(q))
+        );
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return timeB - timeA;
+    });
 
   return (
     <div className="flex-1 flex flex-col p-6 space-y-6 max-w-[1600px] w-full mx-auto">
@@ -436,12 +442,21 @@ export default function StudioLibraryPage() {
                                 }}
                               />
                             </div>
-                            <span className="font-semibold text-white truncate max-w-[150px]">
-                              {song.title}
-                            </span>
+                            <div className="flex flex-col min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-white truncate max-w-[220px]" title={song.title}>
+                                  {song.title}
+                                </span>
+                                {(!song.id.startsWith('song-') || (song.created_at && (Date.now() - new Date(song.created_at).getTime() < 86400000))) && (
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#e5b45f]/20 text-[#e5b45f] border border-[#e5b45f]/40 shrink-0">
+                                    NUEVA
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </td>
-                        <td className="py-3 px-3 text-gray-300 font-medium">{song.artist}</td>
+                        <td className="py-3 px-3 text-gray-300 font-medium truncate max-w-[220px]" title={song.artist}>{song.artist}</td>
                         <td className="py-3 px-3 text-gray-400 hidden md:table-cell">{song.album || '—'}</td>
                         <td className="py-3 px-3">
                           <span className="px-2.5 py-0.5 rounded-full bg-white/5 border border-white/5 text-[10px] text-gray-300 font-medium">

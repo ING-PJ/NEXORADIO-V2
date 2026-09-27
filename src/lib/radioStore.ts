@@ -73,6 +73,13 @@ class RadioStore {
               this.notify();
             }
           )
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'songs' },
+            () => {
+              this.notify();
+            }
+          )
           .on('presence', { event: 'sync' }, () => {
             const presenceState = channel.presenceState();
             const count = Object.keys(presenceState).length;
@@ -139,13 +146,22 @@ class RadioStore {
       }
     }
 
-    // Merge INITIAL_SONGS, localSongs, and dbSongs without duplicates by id
+    // Merge: Put DB songs FIRST (they are the real production songs), then local, then demo songs
     const songMap = new Map<string, Song>();
-    INITIAL_SONGS.forEach((s) => songMap.set(s.id, s));
-    localSongs.forEach((s) => songMap.set(s.id, s));
     dbSongs.forEach((s) => songMap.set(s.id, s));
+    localSongs.forEach((s) => {
+      if (!songMap.has(s.id)) songMap.set(s.id, s);
+    });
+    INITIAL_SONGS.forEach((s) => {
+      if (!songMap.has(s.id)) songMap.set(s.id, s);
+    });
 
-    const result = Array.from(songMap.values());
+    // Sort by created_at descending (newest uploads appear first at the top)
+    const result = Array.from(songMap.values()).sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return timeB - timeA;
+    });
 
     // Sanitize any dead or blocked external URLs (e.g. Pixabay) to local working MP3s
     const sanitized = result.map((s, idx) => {
