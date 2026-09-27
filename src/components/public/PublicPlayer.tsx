@@ -46,10 +46,12 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
     return () => unsubscribe();
   }, []);
 
-  // Auto-switch track when song changes in stationState (Serverless Vercel + Supabase mode)
-  // Auto-switch track when song changes in stationState (Serverless Vercel + Supabase mode)
+  // Stream URL from Render or custom environment
+  const LIVE_STREAM_URL = process.env.NEXT_PUBLIC_STREAM_URL || 'https://nexo-radio-bridge.onrender.com/live';
+
+  // Auto-switch track when song changes in stationState (Only in purely offline / serverless fallback mode)
   useEffect(() => {
-    if (!process.env.NEXT_PUBLIC_STREAM_URL && isPlaying && audioRef.current) {
+    if (!LIVE_STREAM_URL && isPlaying && audioRef.current) {
       radioStore.getSongs().then((songs) => {
         const activeSong = songs.find(
           (s) =>
@@ -108,9 +110,9 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
     }
   }, [volume, isMuted]);
 
-  // Resynchronize listener playback position with studio air progress
+  // Resynchronize listener playback position with studio air progress (Only in offline serverless mode)
   useEffect(() => {
-    if (!process.env.NEXT_PUBLIC_STREAM_URL && isPlaying && audioRef.current && stationState.current_song_progress > 0) {
+    if (!LIVE_STREAM_URL && isPlaying && audioRef.current && stationState.current_song_progress > 0) {
       const diff = Math.abs(audioRef.current.currentTime - stationState.current_song_progress);
       if (diff > 4) {
         audioRef.current.currentTime = stationState.current_song_progress;
@@ -126,13 +128,11 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
       setIsPlaying(false);
     } else {
       setIsLoading(true);
-      const defaultStreamUrl = 'https://nexo-radio-bridge.onrender.com/live';
-      const streamUrl = process.env.NEXT_PUBLIC_STREAM_URL || defaultStreamUrl;
 
-      // If external stream URL is defined and station is live, connect to it
-      if (streamUrl && stationState.is_live) {
+      // Primary: Connect to the live radio stream from Render (Broadcasts DJ voice + music mixed)
+      if (LIVE_STREAM_URL) {
         try {
-          audioRef.current.src = `${streamUrl}?t=${Date.now()}`;
+          audioRef.current.src = `${LIVE_STREAM_URL}?t=${Date.now()}`;
           audioRef.current.volume = isMuted ? 0 : (volume || 0.85);
           audioRef.current.load();
           await audioRef.current.play();
@@ -140,7 +140,7 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
           setIsLoading(false);
           return;
         } catch (err) {
-          console.warn('Could not connect to external stream, falling back to direct track:', err);
+          console.warn('Could not connect to live stream, falling back to direct track:', err);
         }
       }
 
