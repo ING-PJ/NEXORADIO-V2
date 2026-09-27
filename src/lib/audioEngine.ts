@@ -158,6 +158,9 @@ class AudioEngine {
     try {
       await this.audioElement.play();
       this.isPlaying = true;
+      if (!this.isBroadcasting && typeof window !== 'undefined' && localStorage.getItem('nexo_broadcast_enabled') !== 'false') {
+        this.startBroadcasting();
+      }
       radioStore.updateStationState({
         current_song_id: song.id,
         current_song_title: song.title,
@@ -215,9 +218,11 @@ class AudioEngine {
             return;
           }
         }
-      } else {
         await this.audioElement.play();
         this.isPlaying = true;
+        if (!this.isBroadcasting && typeof window !== 'undefined' && localStorage.getItem('nexo_broadcast_enabled') !== 'false') {
+          this.startBroadcasting();
+        }
       }
     }
     this.notify();
@@ -416,6 +421,9 @@ class AudioEngine {
       // Emit chunks every 600ms for stable low latency
       this.mediaRecorder.start(600);
       this.isBroadcasting = true;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('nexo_broadcast_enabled', 'true');
+      }
 
       // Start on-air broadcast timer
       this.airTimeSeconds = 0;
@@ -450,6 +458,9 @@ class AudioEngine {
       this.airTimerInterval = null;
     }
     this.isBroadcasting = false;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('nexo_broadcast_enabled', 'false');
+    }
     radioStore.updateStationState({ is_live: false });
     this.notify();
   }

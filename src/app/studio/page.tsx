@@ -63,10 +63,26 @@ export default function StudioDashboardPage() {
 
     update();
 
+    // Auto-resume broadcast on first gesture after page refresh
+    const autoResume = () => {
+      const savedPref = typeof window !== 'undefined' ? localStorage.getItem('nexo_broadcast_enabled') : null;
+      if (savedPref !== 'false' && !audioEngine.getState().isBroadcasting) {
+        audioEngine.startBroadcasting();
+        setIsBroadcasting(true);
+      }
+      window.removeEventListener('click', autoResume);
+      window.removeEventListener('keydown', autoResume);
+    };
+
+    window.addEventListener('click', autoResume, { once: true });
+    window.addEventListener('keydown', autoResume, { once: true });
+
     return () => {
       unsubStore();
       unsubEngine();
       unsubLevels();
+      window.removeEventListener('click', autoResume);
+      window.removeEventListener('keydown', autoResume);
     };
   }, []);
 
