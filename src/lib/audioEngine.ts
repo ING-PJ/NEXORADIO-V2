@@ -77,17 +77,17 @@ class AudioEngine {
       this.masterDestination = this.ctx.createMediaStreamDestination();
 
       // Routing:
-      // Music -> musicGain -> musicAnalyser -> masterGain
+      // Music -> musicGain -> masterGain (and musicAnalyser in parallel)
       this.audioSourceNode.connect(this.musicGainNode);
+      this.musicGainNode.connect(this.masterGainNode);
       this.musicGainNode.connect(this.musicAnalyser);
-      this.musicAnalyser.connect(this.masterGainNode);
 
-      // Master -> masterAnalyser -> masterDestination (to stream)
+      // Master -> masterDestination (to broadcast stream) & masterAnalyser
+      this.masterGainNode.connect(this.masterDestination);
       this.masterGainNode.connect(this.masterAnalyser);
-      this.masterAnalyser.connect(this.masterDestination);
 
-      // Master -> monitorGain -> speakers (for DJ monitoring)
-      this.masterAnalyser.connect(this.monitorGainNode);
+      // Master -> monitorGain -> speakers (for DJ monitoring in studio)
+      this.masterGainNode.connect(this.monitorGainNode);
       this.monitorGainNode.connect(this.ctx.destination);
 
       // Audio element listeners
@@ -269,11 +269,11 @@ class AudioEngine {
 
         this.micSourceNode = this.ctx.createMediaStreamSource(this.micStream);
         this.micSourceNode.connect(this.micGainNode);
+        if (this.masterGainNode) {
+          this.micGainNode.connect(this.masterGainNode);
+        }
         if (this.micAnalyser) {
           this.micGainNode.connect(this.micAnalyser);
-          if (this.masterGainNode) {
-            this.micAnalyser.connect(this.masterGainNode);
-          }
         }
       }
 
