@@ -16,6 +16,8 @@ import {
   Inbox
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { audioEngine } from '@/lib/audioEngine';
+import { radioStore } from '@/lib/radioStore';
 
 export default function StudioLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -24,6 +26,24 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [userEmail, setUserEmail] = useState('Locutor');
+  const [needsUserInteraction, setNeedsUserInteraction] = useState(false);
+
+  // Subscribe to audio engine interaction state
+  useEffect(() => {
+    const unsub = audioEngine.subscribe(() => {
+      setNeedsUserInteraction(audioEngine.getState().needsUserInteraction);
+    });
+    return () => unsub();
+  }, []);
+
+  // Restore music transmission when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      audioEngine.restoreSession();
+      // Ensure microphone is definitely off the air on studio reload
+      radioStore.updateStationState({ is_mic_active: false });
+    }
+  }, [isAuthenticated]);
 
   // Verify authentication on all /studio routes except /studio/login
   useEffect(() => {
@@ -208,6 +228,16 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
 
       {/* Main Studio Work Area */}
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-[#07080b]">
+        {/* Autoplay / Resume Notification Banner if browser restricts audio on refresh */}
+        {needsUserInteraction && (
+          <div
+            onClick={() => audioEngine.resumeFromGesture()}
+            className="w-full bg-gradient-to-r from-amber-600 via-rose-600 to-amber-600 text-white px-4 py-2.5 text-center text-xs font-bold cursor-pointer hover:opacity-95 transition-all flex items-center justify-center gap-2 shadow-xl sticky top-0 z-50 animate-pulse border-b border-white/10"
+          >
+            <Radio className="w-4 h-4 text-white animate-spin" />
+            <span>Página de studio actualizada. Haz clic aquí o en cualquier parte para continuar la transmisión en vivo</span>
+          </div>
+        )}
         {children}
       </main>
     </div>

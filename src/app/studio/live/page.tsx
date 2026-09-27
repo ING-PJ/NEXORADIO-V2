@@ -45,6 +45,7 @@ export default function StudioLivePage() {
     const unsubLevels = audioEngine.subscribeLevels((l) => setLevels(l));
 
     update();
+    audioEngine.restoreSession();
 
     return () => {
       unsubStore();

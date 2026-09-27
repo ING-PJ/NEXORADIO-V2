@@ -25,6 +25,7 @@ class AudioEngine {
   // State
   private isBroadcasting = false;
   private isMicOnAir = false;
+  private needsUserInteraction = false;
   private musicVolume = 0.8;
   private micVolume = 0.8;
   private masterVolume = 1.0;
@@ -40,7 +41,13 @@ class AudioEngine {
   private animFrameId: number | null = null;
 
   constructor() {
-    // Lazy initialized on first user gesture
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', () => {
+        // Automatically ensure mic is taken off the air on page reload
+        radioStore.updateStationState({ is_mic_active: false });
+        this.persistSession();
+      });
+    }
   }
 
   public init() {
@@ -101,6 +108,7 @@ class AudioEngine {
           radioStore.updateStationState({
             current_song_progress: progress,
           });
+          this.persistSession();
           this.notify();
         }
       });
@@ -143,21 +151,32 @@ class AudioEngine {
   }
 
   // --- PLAYBACK CONTROLS ---
-  public async playSong(song: Song) {
+  public async playSong(song: Song, startTime: number = 0) {
     this.init();
     if (this.ctx && this.ctx.state === 'suspended') {
-      await this.ctx.resume();
+      try { await this.ctx.resume(); } catch {}
     }
 
     if (!this.audioElement) return;
 
     this.currentSong = song;
     this.audioElement.src = song.file_url;
+    if (startTime > 0) {
+      const setTime = () => {
+        if (this.audioElement && startTime > 0) {
+          this.audioElement.currentTime = startTime;
+        }
+      };
+      this.audioElement.addEventListener('loadedmetadata', setTime, { once: true });
+    }
     this.audioElement.load();
 
     try {
       await this.audioElement.play();
       this.isPlaying = true;
+      if (startTime > 0) {
+        this.audioElement.currentTime = startTime;
+      }
       if (!this.isBroadcasting && typeof window !== 'undefined' && localStorage.getItem('nexo_broadcast_enabled') !== 'false') {
         this.startBroadcasting();
       }
@@ -168,16 +187,24 @@ class AudioEngine {
         current_song_cover: song.cover_url,
         current_song_url: song.file_url,
         current_song_duration: song.duration,
-        current_song_progress: 0,
+        current_song_progress: Math.floor(startTime),
       });
+      this.needsUserInteraction = false;
+      this.persistSession();
       this.notify();
     } catch (err) {
       console.warn('Playback error, attempting fallback to local audio:', err);
       try {
         this.audioElement.src = '/songs/summer.mp3';
+        if (startTime > 0) {
+          this.audioElement.currentTime = startTime;
+        }
         this.audioElement.load();
         await this.audioElement.play();
         this.isPlaying = true;
+        if (startTime > 0) {
+          this.audioElement.currentTime = startTime;
+        }
         radioStore.updateStationState({
           current_song_id: song.id,
           current_song_title: song.title,
@@ -185,8 +212,10 @@ class AudioEngine {
           current_song_cover: song.cover_url,
           current_song_url: '/songs/summer.mp3',
           current_song_duration: song.duration,
-          current_song_progress: 0,
+          current_song_progress: Math.floor(startTime),
         });
+        this.needsUserInteraction = false;
+        this.persistSession();
         this.notify();
       } catch (e2) {
         console.error('Final audio play error:', e2);
@@ -197,7 +226,7 @@ class AudioEngine {
   public async togglePlay() {
     this.init();
     if (this.ctx && this.ctx.state === 'suspended') {
-      await this.ctx.resume();
+      try { await this.ctx.resume(); } catch {}
     }
 
     if (!this.audioElement) return;
@@ -218,13 +247,18 @@ class AudioEngine {
             return;
           }
         }
+      }
+      try {
         await this.audioElement.play();
         this.isPlaying = true;
         if (!this.isBroadcasting && typeof window !== 'undefined' && localStorage.getItem('nexo_broadcast_enabled') !== 'false') {
           this.startBroadcasting();
         }
+      } catch (e) {
+        console.warn('togglePlay error:', e);
       }
     }
+    this.persistSession();
     this.notify();
   }
 
@@ -427,8 +461,11 @@ class AudioEngine {
         localStorage.setItem('nexo_broadcast_enabled', 'true');
       }
 
-      // Start on-air broadcast timer
-      this.airTimeSeconds = 0;
+      // Start on-air broadcast timer (preserving air time across refresh)
+      if (this.airTimerInterval) {
+        clearInterval(this.airTimerInterval);
+      }
+      this.airTimeSeconds = this.airTimeSeconds || 0;
       this.airTimerInterval = setInterval(() => {
         this.airTimeSeconds++;
         radioStore.updateStationState({
@@ -439,6 +476,7 @@ class AudioEngine {
       }, 1000);
 
       radioStore.updateStationState({ is_live: true });
+      this.persistSession();
       this.notify();
     } catch (err) {
       console.error('Failed to start media recorder / broadcast:', err);
@@ -447,7 +485,9 @@ class AudioEngine {
 
   public stopBroadcasting() {
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-      this.mediaRecorder.stop();
+      try {
+        this.mediaRecorder.stop();
+      } catch {}
     }
     if (this.broadcastWs) {
       try {
@@ -460,9 +500,11 @@ class AudioEngine {
       this.airTimerInterval = null;
     }
     this.isBroadcasting = false;
+    this.airTimeSeconds = 0;
     if (typeof window !== 'undefined') {
       localStorage.setItem('nexo_broadcast_enabled', 'false');
     }
+    this.persistSession();
     radioStore.updateStationState({ is_live: false });
     this.notify();
   }
@@ -472,6 +514,169 @@ class AudioEngine {
       this.stopBroadcasting();
     } else {
       this.startBroadcasting();
+    }
+  }
+
+  // --- SESSION PERSISTENCE & AUTO-RESTORE ---
+  public persistSession() {
+    if (typeof window === 'undefined') return;
+    try {
+      if (this.currentSong && (this.isPlaying || this.isBroadcasting)) {
+        const session = {
+          song: this.currentSong,
+          currentTime: this.audioElement ? this.audioElement.currentTime : 0,
+          isPlaying: this.isPlaying,
+          isBroadcasting: this.isBroadcasting,
+          airTimeSeconds: this.airTimeSeconds,
+          savedAt: Date.now(),
+        };
+        localStorage.setItem('nexo_playback_session_v1', JSON.stringify(session));
+      } else if (!this.isPlaying && !this.isBroadcasting) {
+        localStorage.removeItem('nexo_playback_session_v1');
+      }
+    } catch {}
+  }
+
+  public async restoreSession(): Promise<boolean> {
+    if (typeof window === 'undefined') return false;
+    // Don't re-run if already actively playing
+    if (this.isPlaying && this.audioElement && !this.audioElement.paused) return true;
+
+    try {
+      // 1. Microphone is strictly forced off on reload
+      this.isMicOnAir = false;
+      radioStore.updateStationState({ is_mic_active: false });
+
+      // 2. Read saved playback session
+      const saved = localStorage.getItem('nexo_playback_session_v1');
+      let targetSong: Song | null = null;
+      let resumeTime = 0;
+      let shouldBroadcast = true;
+      let savedAirTime = 0;
+
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed.song) {
+            targetSong = parsed.song;
+            const elapsed = Math.max(0, (Date.now() - (parsed.savedAt || Date.now())) / 1000);
+            resumeTime = (parsed.currentTime || 0) + (elapsed < 60 ? elapsed : 0);
+            const duration = parsed.song.duration || 300;
+            if (resumeTime >= duration) {
+              resumeTime = 0;
+            }
+            shouldBroadcast = parsed.isBroadcasting !== false;
+            savedAirTime = parsed.airTimeSeconds ? Math.floor(parsed.airTimeSeconds + elapsed) : 0;
+          }
+        } catch {}
+      }
+
+      // Fallback: check station state if session was not in playback session
+      if (!targetSong) {
+        const state = radioStore.getStationState();
+        if (state && state.is_live && state.current_song_title) {
+          targetSong = {
+            id: state.current_song_id || 'restored-song',
+            title: state.current_song_title,
+            artist: state.current_song_artist || 'NEXO Radio',
+            file_url: state.current_song_url || '/songs/summer.mp3',
+            cover_url: state.current_song_cover || '/cover_default.webp',
+            duration: state.current_song_duration || 180,
+            genre: 'Pop',
+          };
+          resumeTime = state.current_song_progress || 0;
+          savedAirTime = state.air_time_seconds || 0;
+        }
+      }
+
+      if (!targetSong) return false;
+
+      this.init();
+      if (this.ctx && this.ctx.state === 'suspended') {
+        try { await this.ctx.resume(); } catch {}
+      }
+
+      this.currentSong = targetSong;
+      this.airTimeSeconds = savedAirTime;
+
+      radioStore.updateStationState({
+        is_mic_active: false,
+        is_live: true,
+        air_time_seconds: this.airTimeSeconds,
+        current_song_id: targetSong.id,
+        current_song_title: targetSong.title,
+        current_song_artist: targetSong.artist,
+        current_song_cover: targetSong.cover_url,
+        current_song_url: targetSong.file_url,
+        current_song_duration: targetSong.duration,
+        current_song_progress: Math.floor(resumeTime),
+      });
+
+      if (this.audioElement) {
+        this.audioElement.src = targetSong.file_url;
+        const setTime = () => {
+          if (this.audioElement && resumeTime > 0) {
+            this.audioElement.currentTime = resumeTime;
+          }
+        };
+        this.audioElement.addEventListener('loadedmetadata', setTime, { once: true });
+        this.audioElement.load();
+
+        try {
+          await this.audioElement.play();
+          this.isPlaying = true;
+          if (resumeTime > 0) {
+            this.audioElement.currentTime = resumeTime;
+          }
+          if (shouldBroadcast) {
+            this.startBroadcasting();
+          }
+          this.needsUserInteraction = false;
+          this.persistSession();
+          this.notify();
+          return true;
+        } catch (autoplayErr) {
+          console.log('Autoplay restriction on page reload, awaiting interaction:', autoplayErr);
+          this.needsUserInteraction = true;
+          this.notify();
+
+          const oneTimeResume = async () => {
+            window.removeEventListener('click', oneTimeResume);
+            window.removeEventListener('keydown', oneTimeResume);
+            window.removeEventListener('touchstart', oneTimeResume);
+            await this.resumeFromGesture();
+          };
+
+          window.addEventListener('click', oneTimeResume, { once: true });
+          window.addEventListener('keydown', oneTimeResume, { once: true });
+          window.addEventListener('touchstart', oneTimeResume, { once: true });
+          return false;
+        }
+      }
+    } catch (e) {
+      console.warn('Error in restoreSession:', e);
+    }
+    return false;
+  }
+
+  public async resumeFromGesture() {
+    this.init();
+    if (this.ctx && this.ctx.state === 'suspended') {
+      try { await this.ctx.resume(); } catch {}
+    }
+    if (this.audioElement) {
+      try {
+        await this.audioElement.play();
+        this.isPlaying = true;
+        this.needsUserInteraction = false;
+        if (!this.isBroadcasting && typeof window !== 'undefined' && localStorage.getItem('nexo_broadcast_enabled') !== 'false') {
+          this.startBroadcasting();
+        }
+        this.persistSession();
+        this.notify();
+      } catch (e) {
+        console.warn('Error resuming audio from gesture:', e);
+      }
     }
   }
 
@@ -504,6 +709,7 @@ class AudioEngine {
       isPlaying: this.isPlaying,
       isMicOnAir: this.isMicOnAir,
       isBroadcasting: this.isBroadcasting,
+      needsUserInteraction: this.needsUserInteraction,
       musicVolume: this.musicVolume,
       micVolume: this.micVolume,
       masterVolume: this.masterVolume,
