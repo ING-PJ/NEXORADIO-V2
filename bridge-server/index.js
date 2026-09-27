@@ -6,6 +6,7 @@ const PORT = process.env.PORT || process.env.BRIDGE_PORT || 8000;
 const ICECAST_URL = process.env.ICECAST_SOURCE_URL || process.env.ICECAST_URL;
 
 let headerChunk = null;
+let headerContentType = 'audio/mp4';
 const listeners = new Set();
 let isBroadcasting = false;
 let broadcasterSocket = null;
@@ -34,6 +35,7 @@ const server = http.createServer((req, res) => {
         isBroadcasting,
         listenersCount: listeners.size,
         port: PORT,
+        format: headerContentType,
         upstreamIcecast: Boolean(ICECAST_URL),
       })
     );
@@ -43,7 +45,7 @@ const server = http.createServer((req, res) => {
   // Icecast-compatible Live Audio Stream
   if (parsed.pathname === '/live' || parsed.pathname === '/stream') {
     res.writeHead(200, {
-      'Content-Type': 'audio/webm; codecs=opus',
+      'Content-Type': headerContentType,
       'Cache-Control': 'no-cache, no-store, must-revalidate',
       'Pragma': 'no-cache',
       'Connection': 'keep-alive',
@@ -104,10 +106,15 @@ wss.on('connection', (ws) => {
   setupIcecastUpstream();
 
   ws.on('message', (data) => {
-    // Save the first chunk as the WebM container header
+    // Save the first chunk as container header and detect format
     if (!headerChunk) {
       headerChunk = Buffer.from(data);
-      console.log('[Broadcaster] Saved initial WebM header chunk of size:', headerChunk.length);
+      if (headerChunk.indexOf('ftyp') !== -1 || headerChunk.indexOf('moov') !== -1) {
+        headerContentType = 'audio/mp4';
+      } else {
+        headerContentType = 'audio/webm; codecs=opus';
+      }
+      console.log(`[Broadcaster] Initial header received (${headerChunk.length} bytes), format: ${headerContentType}`);
     }
 
     const chunk = Buffer.from(data);

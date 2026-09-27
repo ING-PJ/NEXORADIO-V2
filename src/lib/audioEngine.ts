@@ -374,7 +374,9 @@ class AudioEngine {
 
     try {
       const stream = this.masterDestination.stream;
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      const mimeType = MediaRecorder.isTypeSupported('audio/mp4')
+        ? 'audio/mp4'
+        : MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
         ? 'audio/ogg;codecs=opus'
