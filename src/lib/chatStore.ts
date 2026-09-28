@@ -7,7 +7,18 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 const STORAGE_KEY = 'nexo_live_chat_messages_v1';
 const USERNAME_KEY = 'nexo_chat_username';
 const USER_ID_KEY = 'nexo_chat_user_id';
-const MAX_MESSAGES = 80;
+const MAX_MESSAGES = 250;
+
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 
 const DEFAULT_MESSAGES: ChatMessage[] = [
   {
@@ -54,17 +65,43 @@ class ChatStore {
     }
   }
 
+  private deduplicateMessages(list: ChatMessage[]): ChatMessage[] {
+    const result: ChatMessage[] = [];
+    const seenIds = new Set<string>();
+
+    for (const msg of list) {
+      if (!msg || !msg.text) continue;
+      if (seenIds.has(msg.id)) continue;
+
+      const msgTime = new Date(msg.created_at).getTime();
+      const isDuplicate = result.some((existing) => {
+        if (existing.user_name !== msg.user_name) return false;
+        if (existing.text.trim().toLowerCase() !== msg.text.trim().toLowerCase()) return false;
+        const existingTime = new Date(existing.created_at).getTime();
+        return Math.abs(msgTime - existingTime) < 5000;
+      });
+
+      if (!isDuplicate) {
+        seenIds.add(msg.id);
+        result.push(msg);
+      }
+    }
+
+    return result;
+  }
+
   private init() {
     if (this.initialized) return;
     this.initialized = true;
 
-    // Load cached messages from localStorage
+    // Load cached messages from localStorage and purge any existing duplicates
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          this.messages = parsed;
+          this.messages = this.deduplicateMessages(parsed);
+          this.saveToStorage();
         } else {
           this.messages = [...DEFAULT_MESSAGES];
           this.saveToStorage();
@@ -91,12 +128,12 @@ class ChatStore {
       console.warn('BroadcastChannel not available:', e);
     }
 
-    // Connect to Supabase Realtime broadcast channel
+    // Connect to Supabase Realtime broadcast & postgres changes channel
     if (isSupabaseConfigured && supabase) {
       try {
         this.channel = supabase.channel('nexo_live_chat', {
           config: {
-            broadcast: { self: true },
+            broadcast: { self: false },
           },
         });
 
@@ -106,19 +143,37 @@ class ChatStore {
               this.appendMessage(payload, false);
             }
           })
+          .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'chat_messages' },
+            (payload) => {
+              if (payload.new) {
+                const d = payload.new as any;
+                const formatted: ChatMessage = {
+                  id: String(d.id),
+                  user_name: d.user_name || 'Oyente',
+                  text: d.text,
+                  created_at: d.created_at || new Date().toISOString(),
+                  is_dj: Boolean(d.is_dj),
+                  user_id: d.user_id,
+                };
+                this.appendMessage(formatted, false);
+              }
+            }
+          )
           .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
               // Successfully connected to Supabase Realtime WebSocket
             }
           });
 
-        // Also attempt to read recent database messages if the table exists
+        // Read recent database messages if the table exists
         Promise.resolve(
           supabase
             .from('chat_messages')
             .select('*')
             .order('created_at', { ascending: false })
-            .limit(40)
+            .limit(100)
         )
           .then(({ data, error }: any) => {
             if (!error && data && data.length > 0) {
@@ -132,15 +187,11 @@ class ChatStore {
               })).reverse();
 
               // Merge without duplicates
-              const currentIds = new Set(this.messages.map((m) => m.id));
-              const newMsgs = formatted.filter((m) => !currentIds.has(m.id));
-              if (newMsgs.length > 0) {
-                this.messages = [...this.messages, ...newMsgs]
-                  .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-                  .slice(-MAX_MESSAGES);
-                this.saveToStorage();
-                this.notify();
-              }
+              this.messages = this.deduplicateMessages([...this.messages, ...formatted])
+                .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                .slice(-MAX_MESSAGES);
+              this.saveToStorage();
+              this.notify();
             }
           })
           .catch(() => {
@@ -162,8 +213,31 @@ class ChatStore {
   }
 
   private appendMessage(msg: ChatMessage, isLocalSender: boolean) {
-    // Deduplicate
+    if (!msg || !msg.text) return;
+
+    // 1. Exact ID deduplication
     if (this.messages.some((m) => m.id === msg.id)) return;
+
+    // 2. Semantic deduplication: same user, exact same text, within 5 seconds window
+    const nowTime = new Date(msg.created_at).getTime();
+    const existingIndex = this.messages.findIndex((m) => {
+      if (m.user_name !== msg.user_name) return false;
+      if (m.text.trim().toLowerCase() !== msg.text.trim().toLowerCase()) return false;
+      const mTime = new Date(m.created_at).getTime();
+      return Math.abs(nowTime - mTime) < 5000;
+    });
+
+    if (existingIndex !== -1) {
+      // It's the same message (e.g. from local optimistic add, broadcast, or postgres_changes)
+      if (msg.id && this.messages[existingIndex].id !== msg.id) {
+        this.messages[existingIndex] = {
+          ...this.messages[existingIndex],
+          id: msg.id,
+        };
+        this.saveToStorage();
+      }
+      return;
+    }
 
     this.messages.push(msg);
     if (this.messages.length > MAX_MESSAGES) {
@@ -236,7 +310,7 @@ class ChatStore {
       : options?.customName || this.getUserName();
 
     const newMsg: ChatMessage = {
-      id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      id: generateUUID(),
       user_name: userName,
       text: cleanText,
       created_at: new Date().toISOString(),
@@ -272,16 +346,18 @@ class ChatStore {
       }
     }
 
-    // 4. Try saving to Supabase DB table if it exists (fire and forget)
+    // 4. Save to Supabase DB table with the SAME UUID
     if (isSupabaseConfigured && supabase) {
       Promise.resolve(
         supabase
           .from('chat_messages')
           .insert({
+            id: newMsg.id,
             user_name: newMsg.user_name,
             text: newMsg.text,
             is_dj: newMsg.is_dj,
             user_id: newMsg.user_id,
+            created_at: newMsg.created_at,
           })
       ).catch(() => {});
     }

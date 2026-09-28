@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Volume2, VolumeX, Heart, Radio, SkipBack, SkipForward } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Heart, Radio } from 'lucide-react';
 import { radioStore } from '@/lib/radioStore';
 import { StationState } from '@/lib/types';
 
@@ -348,15 +348,6 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
           )}
         </div>
 
-        {/* Previous Track (Disabled in linear radio) */}
-        <button
-          disabled
-          className="p-2.5 text-gray-600 cursor-not-allowed opacity-50"
-          title="Emisión lineal en vivo"
-        >
-          <SkipBack className="w-5 h-5 sm:w-6 sm:h-6" />
-        </button>
-
         {/* Big Glowing Play / Pause Button */}
         <button
           onClick={togglePlay}
@@ -375,15 +366,6 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
           ) : (
             <Play className="w-6 h-6 sm:w-7 sm:h-7 fill-current ml-1" />
           )}
-        </button>
-
-        {/* Next Track (Disabled in linear radio) */}
-        <button
-          disabled
-          className="p-2.5 text-gray-600 cursor-not-allowed opacity-50"
-          title="Emisión lineal en vivo"
-        >
-          <SkipForward className="w-5 h-5 sm:w-6 sm:h-6" />
         </button>
 
         {/* Volume Control with Popover Slider desplegable hacia arriba */}

@@ -11,6 +11,7 @@ import {
   Edit2,
   Smile,
   ShieldCheck,
+  ArrowDown,
 } from 'lucide-react';
 import { chatStore } from '@/lib/chatStore';
 import { ChatMessage } from '@/lib/types';
@@ -28,8 +29,13 @@ export function LiveChatView({ isDj = false, onClose, isCompact = false }: LiveC
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
   const [currentUserId, setCurrentUserId] = useState('');
+  const [isScrolledUp, setIsScrolledUp] = useState(false);
+  const [newMessagesBelow, setNewMessagesBelow] = useState(0);
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isFirstLoadRef = useRef(true);
 
   useEffect(() => {
     setMessages(chatStore.getMessages());
@@ -44,9 +50,41 @@ export function LiveChatView({ isDj = false, onClose, isCompact = false }: LiveC
     return () => unsubscribe();
   }, []);
 
-  // Auto-scroll on new message
+  // Monitor user scroll position to avoid snapping while reading previous messages
+  const handleScroll = () => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const scrolledUp = distanceFromBottom > 90;
+    setIsScrolledUp(scrolledUp);
+    if (!scrolledUp) {
+      setNewMessagesBelow(0);
+    }
+  };
+
+  const scrollToBottom = (smooth = true) => {
+    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
+    setIsScrolledUp(false);
+    setNewMessagesBelow(0);
+  };
+
+  // Smart auto-scroll: only scrolls to bottom if user is already at the bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messages.length === 0) return;
+
+    if (isFirstLoadRef.current) {
+      scrollToBottom(false);
+      isFirstLoadRef.current = false;
+      return;
+    }
+
+    if (isScrolledUp) {
+      // User is reading older messages; don't disrupt them
+      setNewMessagesBelow((prev) => prev + 1);
+    } else {
+      // User is at bottom, auto-scroll smoothly to latest
+      scrollToBottom(true);
+    }
   }, [messages.length]);
 
   const handleSaveName = (e?: React.FormEvent) => {
@@ -95,7 +133,7 @@ export function LiveChatView({ isDj = false, onClose, isCompact = false }: LiveC
   const QUICK_EMOJIS = ['🔥', '🎧', '❤️', '👏', '🙌', '🎶', '📻', '✨'];
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0c10]/95 backdrop-blur-xl text-white select-none">
+    <div className="relative flex flex-col h-full bg-[#0a0c10]/95 backdrop-blur-xl text-white">
       {/* Top Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0">
         <div className="flex items-center gap-2.5">
@@ -188,7 +226,15 @@ export function LiveChatView({ isDj = false, onClose, isCompact = false }: LiveC
       )}
 
       {/* Message Feed */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 scrollbar-thin scrollbar-thumb-white/10">
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto px-4 py-3 space-y-3 scrollbar-thin scrollbar-thumb-white/10 overscroll-contain"
+        style={{
+          WebkitOverflowScrolling: 'touch',
+          touchAction: 'pan-y',
+        }}
+      >
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-6 text-gray-400">
             <Sparkles className="w-8 h-8 text-[#e5b45f] mb-2 opacity-60" />
@@ -246,6 +292,24 @@ export function LiveChatView({ isDj = false, onClose, isCompact = false }: LiveC
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Floating Scroll to Bottom Button */}
+      {isScrolledUp && (
+        <div className="absolute bottom-24 right-4 z-20 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <button
+            type="button"
+            onClick={() => scrollToBottom(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#e5b45f] text-black text-xs font-semibold shadow-xl shadow-black/70 hover:bg-[#f3c87a] active:scale-95 transition-all border border-[#e5b45f]/50"
+          >
+            <ArrowDown className="w-3.5 h-3.5 animate-bounce" />
+            <span>
+              {newMessagesBelow > 0
+                ? `${newMessagesBelow} nuevo${newMessagesBelow > 1 ? 's' : ''} ↓`
+                : 'Ver recientes ↓'}
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* Quick Emojis */}
       <div className="px-3 py-1.5 border-t border-white/5 bg-white/[0.02] flex items-center gap-1 overflow-x-auto scrollbar-none shrink-0">
@@ -307,12 +371,14 @@ export function LiveChatDrawer({ isOpen, onClose, isDj = false }: LiveChatDrawer
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md transition-opacity animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md transition-opacity animate-in fade-in duration-200">
       {/* Backdrop click */}
       <div className="absolute inset-0" onClick={onClose} />
 
       {/* Modal / Sheet Container */}
-      <div className="relative w-full max-w-lg h-[85vh] sm:h-[600px] rounded-t-3xl sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col z-10 animate-in slide-in-from-bottom-5 duration-300">
+      <div className="relative w-full max-w-lg h-[90dvh] max-h-[92dvh] sm:h-[620px] rounded-t-3xl sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col z-10 animate-in slide-in-from-bottom-5 duration-300">
+        {/* Mobile drag handle bar */}
+        <div className="w-12 h-1 bg-white/20 rounded-full mx-auto my-2 sm:hidden shrink-0" />
         <LiveChatView isDj={isDj} onClose={onClose} />
       </div>
     </div>
