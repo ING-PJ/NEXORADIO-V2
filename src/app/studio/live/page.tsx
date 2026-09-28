@@ -15,10 +15,12 @@ import {
   Heart,
   MessageSquare,
   Radio,
-  Clock
+  Clock,
+  Settings2,
 } from 'lucide-react';
 import { audioEngine } from '@/lib/audioEngine';
 import { radioStore } from '@/lib/radioStore';
+import { MicrophoneSettingsModal } from '@/components/studio/MicrophoneSettingsModal';
 import { Song, StationState, AudioLevels } from '@/lib/types';
 
 export default function StudioLivePage() {
@@ -28,6 +30,7 @@ export default function StudioLivePage() {
   const [queue, setQueue] = useState<Song[]>([]);
   const [favoritesCount, setFavoritesCount] = useState(0);
   const [requestsCount, setRequestsCount] = useState(0);
+  const [isMicModalOpen, setIsMicModalOpen] = useState(false);
 
   useEffect(() => {
     const update = async () => {
@@ -139,18 +142,28 @@ export default function StudioLivePage() {
               <p className="text-[11px] text-gray-400">Tiempo al aire</p>
             </div>
 
-            {/* On-Air Toggle Button */}
-            <button
-              onClick={handleToggleMic}
-              className={`px-8 py-3 rounded-full font-bold text-xs tracking-wider uppercase flex items-center gap-2 shadow-xl transition-all transform active:scale-95 ${
-                engineState.isMicOnAir
-                  ? 'bg-rose-600 text-white red-glow hover:bg-rose-500'
-                  : 'bg-[#e5b45f] text-black gold-glow hover:bg-[#f3c87a]'
-              }`}
-            >
-              <Mic className="w-4 h-4" />
-              <span>{engineState.isMicOnAir ? '■ SALIR DEL AIRE' : 'ENTRAR AL AIRE'}</span>
-            </button>
+            {/* On-Air Toggle Button & Settings */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleToggleMic}
+                className={`px-8 py-3 rounded-full font-bold text-xs tracking-wider uppercase flex items-center gap-2 shadow-xl transition-all transform active:scale-95 ${
+                  engineState.isMicOnAir
+                    ? 'bg-rose-600 text-white red-glow hover:bg-rose-500'
+                    : 'bg-[#e5b45f] text-black gold-glow hover:bg-[#f3c87a]'
+                }`}
+              >
+                <Mic className="w-4 h-4" />
+                <span>{engineState.isMicOnAir ? '■ SALIR DEL AIRE' : 'ENTRAR AL AIRE'}</span>
+              </button>
+
+              <button
+                onClick={() => setIsMicModalOpen(true)}
+                className="p-3 rounded-full bg-white/10 hover:bg-white/20 text-white border border-white/10 transition-all shadow-md active:scale-95"
+                title="Configuración de calidad de micrófono"
+              >
+                <Settings2 className="w-4 h-4 text-[#e5b45f]" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -158,7 +171,14 @@ export default function StudioLivePage() {
         <div className="lg:col-span-4 rounded-3xl glass-panel p-6 border border-white/5 flex flex-col justify-between space-y-6">
           <div className="flex items-center justify-between pb-2 border-b border-white/5">
             <span className="text-xs font-bold uppercase tracking-wider text-white">Niveles de audio</span>
-            <Sliders className="w-4 h-4 text-gray-400" />
+            <button
+              onClick={() => setIsMicModalOpen(true)}
+              className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-[#e5b45f] transition-colors"
+              title="Ajustes de micrófono"
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+              <span>Ajustes</span>
+            </button>
           </div>
 
           {/* Mic */}
@@ -361,6 +381,12 @@ export default function StudioLivePage() {
           <p className="text-[11px] text-gray-500 text-center">Transmisión estable y fluida</p>
         </div>
       </div>
+
+      {/* Microphone Quality & Settings Modal */}
+      <MicrophoneSettingsModal
+        isOpen={isMicModalOpen}
+        onClose={() => setIsMicModalOpen(false)}
+      />
     </div>
   );
 }

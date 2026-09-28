@@ -17,10 +17,19 @@ class AudioEngine {
 
   private micStream: MediaStream | null = null;
   private micSourceNode: MediaStreamAudioSourceNode | null = null;
-  private micFilterNode: BiquadFilterNode | null = null;
+  private micHighpassNode: BiquadFilterNode | null = null;
+  private micWarmthNode: BiquadFilterNode | null = null;
+  private micMudCutNode: BiquadFilterNode | null = null;
+  private micPresenceNode: BiquadFilterNode | null = null;
+  private micAirNode: BiquadFilterNode | null = null;
   private micPreampNode: GainNode | null = null;
   private micCompressorNode: DynamicsCompressorNode | null = null;
   private masterDestination: MediaStreamAudioDestinationNode | null = null;
+
+  // Microphone preferences
+  private selectedDeviceId: string | null = null;
+  private micMode: 'studio' | 'standard' = 'studio';
+  private broadcastEnhance = true;
 
   private mediaRecorder: MediaRecorder | null = null;
   private broadcastWs: WebSocket | null = null;
@@ -54,6 +63,17 @@ class AudioEngine {
       if (savedMusicVol) {
         const parsed = parseFloat(savedMusicVol);
         if (!isNaN(parsed) && parsed >= 0) this.musicVolume = parsed;
+      }
+      this.selectedDeviceId = localStorage.getItem('nexo_mic_device_id') || null;
+      const savedMode = localStorage.getItem('nexo_mic_mode');
+      if (savedMode === 'standard' || savedMode === 'studio') {
+        this.micMode = savedMode;
+      } else {
+        this.micMode = 'studio';
+      }
+      const savedEnhance = localStorage.getItem('nexo_mic_enhance');
+      if (savedEnhance !== null) {
+        this.broadcastEnhance = savedEnhance !== 'false';
       }
       window.addEventListener('beforeunload', () => {
         // Automatically ensure mic is taken off the air on page reload
@@ -295,6 +315,93 @@ class AudioEngine {
   }
 
   // --- DUCKING & MICROPHONE ---
+  private closeMicStream() {
+    if (this.micStream) {
+      this.micStream.getTracks().forEach((track) => track.stop());
+      this.micStream = null;
+    }
+    if (this.micSourceNode) {
+      try { this.micSourceNode.disconnect(); } catch {}
+      this.micSourceNode = null;
+    }
+  }
+
+  private setupMicChain() {
+    if (!this.ctx || !this.micSourceNode || !this.micGainNode) return;
+
+    try { this.micSourceNode.disconnect(); } catch {}
+
+    if (this.broadcastEnhance) {
+      // 1. Highpass Filter at 75Hz (Q: 0.707) - removes low-end desk rumbles and table thumps
+      this.micHighpassNode = this.ctx.createBiquadFilter();
+      this.micHighpassNode.type = 'highpass';
+      this.micHighpassNode.frequency.setValueAtTime(75, this.ctx.currentTime);
+      this.micHighpassNode.Q.setValueAtTime(0.707, this.ctx.currentTime);
+
+      // 2. Vocal Warmth / Body at 220Hz (+2.2dB) - rich radio announcer chest resonance
+      this.micWarmthNode = this.ctx.createBiquadFilter();
+      this.micWarmthNode.type = 'peaking';
+      this.micWarmthNode.frequency.setValueAtTime(220, this.ctx.currentTime);
+      this.micWarmthNode.Q.setValueAtTime(1.0, this.ctx.currentTime);
+      this.micWarmthNode.gain.setValueAtTime(2.2, this.ctx.currentTime);
+
+      // 3. Boxiness / Mud Cut at 650Hz (-1.8dB) - clears out hollow cardboard room sound
+      this.micMudCutNode = this.ctx.createBiquadFilter();
+      this.micMudCutNode.type = 'peaking';
+      this.micMudCutNode.frequency.setValueAtTime(650, this.ctx.currentTime);
+      this.micMudCutNode.Q.setValueAtTime(1.3, this.ctx.currentTime);
+      this.micMudCutNode.gain.setValueAtTime(-1.8, this.ctx.currentTime);
+
+      // 4. Clarity & Vocal Articulation at 3.8kHz (+2.6dB) - lets words cut through music cleanly
+      this.micPresenceNode = this.ctx.createBiquadFilter();
+      this.micPresenceNode.type = 'peaking';
+      this.micPresenceNode.frequency.setValueAtTime(3800, this.ctx.currentTime);
+      this.micPresenceNode.Q.setValueAtTime(1.1, this.ctx.currentTime);
+      this.micPresenceNode.gain.setValueAtTime(2.6, this.ctx.currentTime);
+
+      // 5. Air & Sheen at 10kHz (+1.6dB) - silky condenser high-end
+      this.micAirNode = this.ctx.createBiquadFilter();
+      this.micAirNode.type = 'highshelf';
+      this.micAirNode.frequency.setValueAtTime(10000, this.ctx.currentTime);
+      this.micAirNode.gain.setValueAtTime(1.6, this.ctx.currentTime);
+
+      // 6. Preamp Boost (+3dB ~ 1.4x clean gain)
+      this.micPreampNode = this.ctx.createGain();
+      this.micPreampNode.gain.setValueAtTime(1.4, this.ctx.currentTime);
+
+      // 7. Radio Voice Compressor (smooth, warm, transparent, prevents peak distortion without pumping)
+      this.micCompressorNode = this.ctx.createDynamicsCompressor();
+      this.micCompressorNode.threshold.setValueAtTime(-16, this.ctx.currentTime);
+      this.micCompressorNode.knee.setValueAtTime(12, this.ctx.currentTime);
+      this.micCompressorNode.ratio.setValueAtTime(3.0, this.ctx.currentTime);
+      this.micCompressorNode.attack.setValueAtTime(0.008, this.ctx.currentTime);
+      this.micCompressorNode.release.setValueAtTime(0.18, this.ctx.currentTime);
+
+      // Connect: source -> highpass -> warmth -> mudCut -> presence -> air -> preamp -> compressor -> micGainNode
+      this.micSourceNode.connect(this.micHighpassNode);
+      this.micHighpassNode.connect(this.micWarmthNode);
+      this.micWarmthNode.connect(this.micMudCutNode);
+      this.micMudCutNode.connect(this.micPresenceNode);
+      this.micPresenceNode.connect(this.micAirNode);
+      this.micAirNode.connect(this.micPreampNode);
+      this.micPreampNode.connect(this.micCompressorNode);
+      this.micCompressorNode.connect(this.micGainNode);
+    } else {
+      // Pure Raw Audio bypass: source -> preamp -> micGainNode
+      this.micPreampNode = this.ctx.createGain();
+      this.micPreampNode.gain.setValueAtTime(1.2, this.ctx.currentTime);
+      this.micSourceNode.connect(this.micPreampNode);
+      this.micPreampNode.connect(this.micGainNode);
+    }
+
+    if (this.masterGainNode) {
+      try { this.micGainNode.connect(this.masterGainNode); } catch {}
+    }
+    if (this.micAnalyser) {
+      try { this.micGainNode.connect(this.micAnalyser); } catch {}
+    }
+  }
+
   public async enterOnAir(): Promise<boolean> {
     this.init();
     if (this.ctx && this.ctx.state === 'suspended') {
@@ -306,45 +413,32 @@ class AudioEngine {
     try {
       // 1. Request microphone access if not already opened
       if (!this.micStream) {
-        this.micStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: false, // We use a professional broadcast compressor instead of browser auto-suppression
-          },
-        });
+        const audioConstraints: MediaTrackConstraints = {
+          // In studio mode (recommended), we disable browser VoIP telephone filters so your real microphone shines!
+          echoCancellation: this.micMode === 'standard',
+          noiseSuppression: this.micMode === 'standard',
+          autoGainControl: false,
+          channelCount: { ideal: 1 },
+          sampleRate: { ideal: 48000 },
+        };
+
+        if (this.selectedDeviceId) {
+          audioConstraints.deviceId = { ideal: this.selectedDeviceId };
+        }
+
+        try {
+          this.micStream = await navigator.mediaDevices.getUserMedia({
+            audio: audioConstraints,
+          });
+        } catch (constraintErr) {
+          console.warn('Fallback to basic audio constraints:', constraintErr);
+          this.micStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+          });
+        }
 
         this.micSourceNode = this.ctx.createMediaStreamSource(this.micStream);
-
-        // Highpass Filter at 80Hz (cuts rumble, air noise, and table thumps)
-        this.micFilterNode = this.ctx.createBiquadFilter();
-        this.micFilterNode.type = 'highpass';
-        this.micFilterNode.frequency.setValueAtTime(80, this.ctx.currentTime);
-
-        // Preamp Boost (+6dB ~ 1.8x) so voice is loud and punchy
-        this.micPreampNode = this.ctx.createGain();
-        this.micPreampNode.gain.setValueAtTime(1.8, this.ctx.currentTime);
-
-        // Radio Voice Dynamics Compressor (brings soft speech up, stops peaks from distorting)
-        this.micCompressorNode = this.ctx.createDynamicsCompressor();
-        this.micCompressorNode.threshold.setValueAtTime(-24, this.ctx.currentTime);
-        this.micCompressorNode.knee.setValueAtTime(10, this.ctx.currentTime);
-        this.micCompressorNode.ratio.setValueAtTime(5, this.ctx.currentTime);
-        this.micCompressorNode.attack.setValueAtTime(0.003, this.ctx.currentTime);
-        this.micCompressorNode.release.setValueAtTime(0.06, this.ctx.currentTime);
-
-        // Signal Chain: micSource -> filter -> preamp -> compressor -> micGainNode
-        this.micSourceNode.connect(this.micFilterNode);
-        this.micFilterNode.connect(this.micPreampNode);
-        this.micPreampNode.connect(this.micCompressorNode);
-        this.micCompressorNode.connect(this.micGainNode);
-
-        if (this.masterGainNode) {
-          this.micGainNode.connect(this.masterGainNode);
-        }
-        if (this.micAnalyser) {
-          this.micGainNode.connect(this.micAnalyser);
-        }
+        this.setupMicChain();
       }
 
       const now = this.ctx.currentTime;
@@ -405,6 +499,59 @@ class AudioEngine {
     } else {
       this.enterOnAir();
     }
+  }
+
+  // --- AUDIO INPUT DEVICE & QUALITY CONTROLS ---
+  public async getAudioInputDevices(): Promise<MediaDeviceInfo[]> {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) {
+      return [];
+    }
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      return devices.filter((d) => d.kind === 'audioinput');
+    } catch (e) {
+      console.warn('Error enumerating audio devices:', e);
+      return [];
+    }
+  }
+
+  public async setAudioInputDevice(deviceId: string) {
+    this.selectedDeviceId = deviceId;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('nexo_mic_device_id', deviceId);
+    }
+    if (this.isMicOnAir) {
+      this.closeMicStream();
+      await this.enterOnAir();
+    } else if (this.micStream) {
+      this.closeMicStream();
+    }
+    this.notify();
+  }
+
+  public async setMicMode(mode: 'studio' | 'standard') {
+    this.micMode = mode;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('nexo_mic_mode', mode);
+    }
+    if (this.isMicOnAir) {
+      this.closeMicStream();
+      await this.enterOnAir();
+    } else if (this.micStream) {
+      this.closeMicStream();
+    }
+    this.notify();
+  }
+
+  public setBroadcastEnhance(enabled: boolean) {
+    this.broadcastEnhance = enabled;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('nexo_mic_enhance', enabled ? 'true' : 'false');
+    }
+    if (this.micSourceNode) {
+      this.setupMicChain();
+    }
+    this.notify();
   }
 
   // --- VOLUME FADERS ---
@@ -767,6 +914,9 @@ class AudioEngine {
       currentTime: this.audioElement ? Math.floor(this.audioElement.currentTime) : 0,
       duration: this.audioElement && !isNaN(this.audioElement.duration) ? Math.floor(this.audioElement.duration) : (this.currentSong?.duration || 0),
       airTimeSeconds: this.airTimeSeconds,
+      selectedDeviceId: this.selectedDeviceId,
+      micMode: this.micMode,
+      broadcastEnhance: this.broadcastEnhance,
     };
   }
 }

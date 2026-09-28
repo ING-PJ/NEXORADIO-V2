@@ -24,11 +24,13 @@ import {
   Sliders,
   MoreVertical,
   Heart,
-  MessageSquare
+  MessageSquare,
+  Settings2,
 } from 'lucide-react';
 import { audioEngine } from '@/lib/audioEngine';
 import { radioStore } from '@/lib/radioStore';
 import { LiveChatView } from '@/components/public/LiveChat';
+import { MicrophoneSettingsModal } from '@/components/studio/MicrophoneSettingsModal';
 import { Song, StationState, AudioLevels, Playlist } from '@/lib/types';
 
 export default function StudioDashboardPage() {
@@ -42,6 +44,7 @@ export default function StudioDashboardPage() {
   const [activeTab, setActiveTab] = useState<'biblioteca' | 'playlists' | 'chat'>('biblioteca');
   const [micError, setMicError] = useState('');
   const [isBroadcasting, setIsBroadcasting] = useState(false);
+  const [isMicModalOpen, setIsMicModalOpen] = useState(false);
 
   // Sync state
   useEffect(() => {
@@ -298,9 +301,17 @@ export default function StudioDashboardPage() {
             </h4>
             <p className="text-xs text-gray-400 max-w-[200px]">
               {engineState.isMicOnAir
-                ? 'Música atenuada suavemente al 28%. Tu voz está mezclada al Master.'
+                ? 'Música atenuada suavemente al 15%. Tu voz está mezclada al Master.'
                 : 'Pulsa para entrar al aire con ducking automático sobre la música.'}
             </p>
+
+            <button
+              onClick={() => setIsMicModalOpen(true)}
+              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white text-[11px] font-medium border border-white/5 transition-colors"
+            >
+              <Settings2 className="w-3.5 h-3.5 text-[#e5b45f]" />
+              <span>Ajustes de Micrófono</span>
+            </button>
           </div>
         </div>
 
@@ -310,7 +321,14 @@ export default function StudioDashboardPage() {
             <span className="text-xs font-semibold uppercase tracking-wider text-gray-300">
               Niveles de audio
             </span>
-            <Sliders className="w-4 h-4 text-gray-400" />
+            <button
+              onClick={() => setIsMicModalOpen(true)}
+              className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-[#e5b45f] transition-colors"
+              title="Ajustes de calidad de micrófono"
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+              <span>Calidad</span>
+            </button>
           </div>
 
           {/* Mic Meter & Slider */}
@@ -683,6 +701,12 @@ export default function StudioDashboardPage() {
           <p className="text-[11px] text-gray-500 mt-1">Duración de la emisión actual</p>
         </div>
       </div>
+
+      {/* Microphone Settings Modal */}
+      <MicrophoneSettingsModal
+        isOpen={isMicModalOpen}
+        onClose={() => setIsMicModalOpen(false)}
+      />
     </div>
   );
 }
