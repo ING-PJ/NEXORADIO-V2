@@ -224,6 +224,7 @@ wss.on('connection', (ws) => {
     console.log('[Broadcaster] NEXO Studio disconnected.');
     isBroadcasting = false;
     broadcasterSocket = null;
+    headerChunk = null;
     if (upstreamIcecastReq) {
       upstreamIcecastReq.end();
       upstreamIcecastReq = null;

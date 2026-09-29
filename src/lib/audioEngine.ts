@@ -33,6 +33,8 @@ class AudioEngine {
 
   private mediaRecorder: MediaRecorder | null = null;
   private broadcastWs: WebSocket | null = null;
+  private broadcastReconnectTimeout: any = null;
+  private pendingChunks: ArrayBuffer[] = [];
 
   // State
   private isBroadcasting = false;
@@ -461,6 +463,12 @@ class AudioEngine {
       this.isMicOnAir = true;
       radioStore.updateStationState({ is_mic_active: true });
       this.notify();
+
+      // Ensure live broadcast transmission is active and connected
+      if (!this.isBroadcasting || !this.broadcastWs || this.broadcastWs.readyState !== WebSocket.OPEN) {
+        this.startBroadcasting();
+      }
+
       return true;
     } catch (err) {
       console.error('Microphone access denied or error:', err);
@@ -597,80 +605,123 @@ class AudioEngine {
   }
 
   // --- BROADCAST TRANSMISSION TO BRIDGE / ICECAST ---
-  public startBroadcasting() {
-    this.init();
-    if (!this.masterDestination) return;
+  private connectBroadcastWs() {
+    if (typeof window === 'undefined') return;
+    const defaultWsUrl = 'wss://nexo-radio-bridge.onrender.com/broadcast';
+    const wsUrl = process.env.NEXT_PUBLIC_BRIDGE_WS_URL || defaultWsUrl;
 
-    if (this.isBroadcasting) return;
+    if (this.broadcastWs) {
+      if (this.broadcastWs.readyState === WebSocket.OPEN || this.broadcastWs.readyState === WebSocket.CONNECTING) {
+        return;
+      }
+      try { this.broadcastWs.close(); } catch {}
+      this.broadcastWs = null;
+    }
 
     try {
-      const stream = this.masterDestination.stream;
-      const mimeType = MediaRecorder.isTypeSupported('audio/mp4')
-        ? 'audio/mp4'
-        : MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
-        ? 'audio/ogg;codecs=opus'
-        : '';
+      const ws = new WebSocket(wsUrl);
+      ws.binaryType = 'arraybuffer';
+      this.broadcastWs = ws;
 
-      const options = mimeType ? { mimeType, audioBitsPerSecond: 128000 } : { audioBitsPerSecond: 128000 };
-      this.mediaRecorder = new MediaRecorder(stream, options);
-
-      // Connect to Source Bridge WebSocket
-      const defaultWsUrl = 'wss://nexo-radio-bridge.onrender.com/broadcast';
-      const wsUrl = process.env.NEXT_PUBLIC_BRIDGE_WS_URL || defaultWsUrl;
-      const initialChunkQueue: ArrayBuffer[] = [];
-
-      try {
-        this.broadcastWs = new WebSocket(wsUrl);
-        this.broadcastWs.binaryType = 'arraybuffer';
-
-        this.broadcastWs.onopen = () => {
-          console.log('Connected to NEXO Audio Bridge Server at', wsUrl);
-          while (initialChunkQueue.length > 0) {
-            const chunk = initialChunkQueue.shift();
-            if (chunk) this.broadcastWs?.send(chunk);
-          }
-        };
-
-        this.broadcastWs.onerror = (e) => {
-          console.warn('Bridge server error notice:', e);
-        };
-      } catch (wsErr) {
-        console.warn('Could not establish WebSocket to bridge:', wsErr);
-      }
-
-      this.mediaRecorder.ondataavailable = async (e) => {
-        if (e.data && e.data.size > 0) {
-          const buffer = await e.data.arrayBuffer();
-          if (this.broadcastWs && this.broadcastWs.readyState === WebSocket.OPEN) {
-            this.broadcastWs.send(buffer);
-          } else {
-            initialChunkQueue.push(buffer);
+      ws.onopen = () => {
+        console.log('[Broadcast] Connected to NEXO Audio Bridge Server at', wsUrl);
+        while (this.pendingChunks.length > 0) {
+          const chunk = this.pendingChunks.shift();
+          if (chunk && ws.readyState === WebSocket.OPEN) {
+            ws.send(chunk);
           }
         }
       };
 
-      // Emit chunks every 600ms for stable low latency
-      this.mediaRecorder.start(600);
+      ws.onclose = () => {
+        console.warn('[Broadcast] WebSocket disconnected. Auto-reconnecting in 2.5s...');
+        if (this.isBroadcasting) {
+          if (this.broadcastReconnectTimeout) clearTimeout(this.broadcastReconnectTimeout);
+          this.broadcastReconnectTimeout = setTimeout(() => {
+            if (this.isBroadcasting) this.connectBroadcastWs();
+          }, 2500);
+        }
+      };
+
+      ws.onerror = (e) => {
+        console.warn('[Broadcast] WebSocket notice:', e);
+      };
+    } catch (wsErr) {
+      console.warn('[Broadcast] Could not establish WebSocket to bridge:', wsErr);
+    }
+  }
+
+  public startBroadcasting() {
+    this.init();
+    if (!this.masterDestination) return;
+
+    // If already broadcasting and WebSocket is open and recording, nothing to do
+    if (
+      this.isBroadcasting &&
+      this.broadcastWs &&
+      this.broadcastWs.readyState === WebSocket.OPEN &&
+      this.mediaRecorder &&
+      this.mediaRecorder.state === 'recording'
+    ) {
+      return;
+    }
+
+    try {
+      // Connect WebSocket to Bridge
+      this.connectBroadcastWs();
+
+      // If MediaRecorder is not yet recording, start it
+      if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {
+        const stream = this.masterDestination.stream;
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+          ? 'audio/ogg;codecs=opus'
+          : MediaRecorder.isTypeSupported('audio/mp4')
+          ? 'audio/mp4'
+          : '';
+
+        const options = mimeType ? { mimeType, audioBitsPerSecond: 128000 } : { audioBitsPerSecond: 128000 };
+        this.mediaRecorder = new MediaRecorder(stream, options);
+
+        this.mediaRecorder.ondataavailable = async (e) => {
+          if (e.data && e.data.size > 0) {
+            const buffer = await e.data.arrayBuffer();
+            if (this.broadcastWs && this.broadcastWs.readyState === WebSocket.OPEN) {
+              this.broadcastWs.send(buffer);
+            } else {
+              this.pendingChunks.push(buffer);
+              if (this.pendingChunks.length > 15) {
+                this.pendingChunks.shift(); // retain last ~9 seconds max
+              }
+              if (this.isBroadcasting && (!this.broadcastWs || this.broadcastWs.readyState === WebSocket.CLOSED)) {
+                this.connectBroadcastWs();
+              }
+            }
+          }
+        };
+
+        // Emit chunks every 600ms for stable low-latency transmission
+        this.mediaRecorder.start(600);
+      }
+
       this.isBroadcasting = true;
       if (typeof window !== 'undefined') {
         localStorage.setItem('nexo_broadcast_enabled', 'true');
       }
 
-      // Start on-air broadcast timer (preserving air time across refresh)
-      if (this.airTimerInterval) {
-        clearInterval(this.airTimerInterval);
+      // Start on-air broadcast timer
+      if (!this.airTimerInterval) {
+        this.airTimeSeconds = this.airTimeSeconds || 0;
+        this.airTimerInterval = setInterval(() => {
+          this.airTimeSeconds++;
+          radioStore.updateStationState({
+            air_time_seconds: this.airTimeSeconds,
+            is_live: true,
+          });
+          this.notify();
+        }, 1000);
       }
-      this.airTimeSeconds = this.airTimeSeconds || 0;
-      this.airTimerInterval = setInterval(() => {
-        this.airTimeSeconds++;
-        radioStore.updateStationState({
-          air_time_seconds: this.airTimeSeconds,
-          is_live: true,
-        });
-        this.notify();
-      }, 1000);
 
       radioStore.updateStationState({ is_live: true });
       this.persistSession();
@@ -681,6 +732,10 @@ class AudioEngine {
   }
 
   public stopBroadcasting() {
+    if (this.broadcastReconnectTimeout) {
+      clearTimeout(this.broadcastReconnectTimeout);
+      this.broadcastReconnectTimeout = null;
+    }
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       try {
         this.mediaRecorder.stop();
@@ -698,6 +753,7 @@ class AudioEngine {
     }
     this.isBroadcasting = false;
     this.airTimeSeconds = 0;
+    this.pendingChunks = [];
     if (typeof window !== 'undefined') {
       localStorage.setItem('nexo_broadcast_enabled', 'false');
     }

@@ -138,6 +138,18 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
     }
   }, [stationState.current_song_id, stationState.current_song_title, stationState.current_song_url, isPlaying]);
 
+  // When station is broadcasting live, automatically switch listener to live stream if playing fallback
+  useEffect(() => {
+    if (LIVE_STREAM_URL && isPlaying && stationState.is_live && audioRef.current) {
+      if (!audioRef.current.src.includes('/live')) {
+        console.log('[Player] Station is live, switching to live broadcast stream...');
+        audioRef.current.src = `${LIVE_STREAM_URL}?t=${Date.now()}`;
+        audioRef.current.load();
+        audioRef.current.play().catch(console.warn);
+      }
+    }
+  }, [stationState.is_live, isPlaying]);
+
   // Initialize audio element
   useEffect(() => {
     const audio = new Audio();
