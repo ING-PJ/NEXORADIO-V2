@@ -51,6 +51,43 @@ export default function StudioLibraryPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Storage calculations (50 GB station capacity)
+  const [showStorageTooltip, setShowStorageTooltip] = useState(false);
+  const MAX_STORAGE_BYTES = 50 * 1024 * 1024 * 1024; // 50 GB
+
+  const totalUsedBytes = React.useMemo(() => {
+    return songs.reduce((sum, song) => {
+      const size =
+        typeof song.file_size === 'number' && song.file_size > 0
+          ? song.file_size
+          : song.duration
+          ? Math.round(song.duration * 18000)
+          : 4800000;
+      return sum + size;
+    }, 0);
+  }, [songs]);
+
+  const formattedUsed = React.useMemo(() => {
+    if (totalUsedBytes <= 0) return '0 MB';
+    const gb = totalUsedBytes / (1024 * 1024 * 1024);
+    if (gb >= 1) {
+      return `${gb.toFixed(1)} GB`;
+    }
+    const mb = totalUsedBytes / (1024 * 1024);
+    return `${mb.toFixed(1)} MB`;
+  }, [totalUsedBytes]);
+
+  const formattedAvailable = React.useMemo(() => {
+    const left = Math.max(MAX_STORAGE_BYTES - totalUsedBytes, 0);
+    const gb = left / (1024 * 1024 * 1024);
+    return `${gb.toFixed(1)} GB`;
+  }, [totalUsedBytes]);
+
+  const storagePercentage = React.useMemo(() => {
+    const pct = (totalUsedBytes / MAX_STORAGE_BYTES) * 100;
+    return Math.min(Math.max(pct, songs.length > 0 ? 1.5 : 0), 100);
+  }, [totalUsedBytes, songs.length]);
+
   useEffect(() => {
     loadData();
     const unsub = radioStore.subscribe(loadData);
@@ -273,15 +310,58 @@ export default function StudioLibraryPage() {
         </div>
 
         <div className="flex items-center gap-4">
-          {/* Storage Meter */}
-          <div className="hidden sm:flex items-center gap-3 px-4 py-2 rounded-2xl bg-white/5 border border-white/5 text-xs text-gray-300">
-            <UploadCloud className="w-4 h-4 text-[#e5b45f]" />
+          {/* Dynamic Storage Meter with Interactive Tooltip */}
+          <div
+            className="relative flex items-center gap-3 px-3.5 sm:px-4 py-2 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-gray-300 transition-all cursor-pointer group"
+            onClick={() => setShowStorageTooltip((prev) => !prev)}
+            onMouseEnter={() => setShowStorageTooltip(true)}
+            onMouseLeave={() => setShowStorageTooltip(false)}
+            title="Ver detalles de almacenamiento"
+          >
+            <UploadCloud className="w-4 h-4 text-[#e5b45f] flex-shrink-0" />
             <div className="flex flex-col">
-              <span className="font-semibold text-white">12.4 GB de 50 GB usados</span>
-              <div className="w-28 h-1 bg-neutral-800 rounded-full mt-1 overflow-hidden">
-                <div className="w-1/4 h-full bg-[#e5b45f] rounded-full" />
+              <span className="font-semibold text-white tracking-wide">
+                {formattedUsed} de 50 GB usados
+              </span>
+              <div className="w-24 sm:w-28 h-1.5 bg-neutral-800 rounded-full mt-1 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-[#d9a149] via-[#e5b45f] to-[#f3c87a] rounded-full transition-all duration-500"
+                  style={{ width: `${storagePercentage}%` }}
+                />
               </div>
             </div>
+
+            {/* Storage Info Popover */}
+            {showStorageTooltip && (
+              <div className="absolute top-full mt-2 right-0 sm:left-1/2 sm:-translate-x-1/2 w-64 p-3 rounded-2xl bg-[#12141a]/95 backdrop-blur-xl border border-white/15 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-200 pointer-events-none">
+                <div className="flex items-center justify-between pb-2 border-b border-white/10 mb-2">
+                  <span className="text-[11px] font-bold text-white uppercase tracking-wider">
+                    Almacenamiento
+                  </span>
+                  <span className="text-[10px] font-mono text-[#e5b45f] font-semibold">
+                    {((totalUsedBytes / MAX_STORAGE_BYTES) * 100).toFixed(2)}%
+                  </span>
+                </div>
+                <div className="space-y-1.5 text-[11px]">
+                  <div className="flex justify-between text-gray-300">
+                    <span>Espacio usado:</span>
+                    <span className="font-semibold text-white">{formattedUsed}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-300">
+                    <span>Disponible:</span>
+                    <span className="font-semibold text-emerald-400">{formattedAvailable}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-300">
+                    <span>Canciones en biblioteca:</span>
+                    <span className="font-semibold text-white">{songs.length}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-300">
+                    <span>Capacidad total:</span>
+                    <span className="font-semibold text-gray-400">50 GB</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <button
