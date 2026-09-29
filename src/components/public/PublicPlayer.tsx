@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Volume2, VolumeX, Heart, Radio } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Heart, Radio, Music2 } from 'lucide-react';
 import { radioStore } from '@/lib/radioStore';
 import { StationState } from '@/lib/types';
 
@@ -371,7 +371,7 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
         </button>
       </div>
 
-      {/* Live Badge Status */}
+      {/* Live Badge Status & Song Request Button */}
       <div className="mt-6 flex flex-wrap items-center justify-center gap-3 z-10">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-[#e5b45f]/40 bg-[#e5b45f]/10 backdrop-blur-md">
           <span className="relative flex h-2.5 w-2.5">
@@ -382,6 +382,18 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
             EN VIVO · NEXO RADIO
           </span>
         </div>
+
+        {/* Button to open Request Modal */}
+        <button
+          type="button"
+          onClick={onOpenRequestModal}
+          className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-[#e5b45f]/40 bg-gradient-to-r from-[#e5b45f]/20 to-[#f3c87a]/20 hover:from-[#e5b45f]/30 hover:to-[#f3c87a]/30 text-white hover:text-[#e5b45f] text-xs font-semibold tracking-wide transition-all transform active:scale-95 shadow-md shadow-[#e5b45f]/10 cursor-pointer"
+          title="Pedir una canción a la cabina de NEXO Radio"
+          aria-label="Pedir canción"
+        >
+          <Music2 className="w-3.5 h-3.5 text-[#e5b45f]" />
+          <span>Pedir canción</span>
+        </button>
       </div>
     </div>
   );

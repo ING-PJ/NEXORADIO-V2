@@ -28,12 +28,29 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
   const [userEmail, setUserEmail] = useState('Locutor');
   const [needsUserInteraction, setNeedsUserInteraction] = useState(false);
 
-  // Subscribe to audio engine interaction state
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
+
+  // Subscribe to audio engine interaction state and incoming requests
   useEffect(() => {
     const unsub = audioEngine.subscribe(() => {
       setNeedsUserInteraction(audioEngine.getState().needsUserInteraction);
     });
-    return () => unsub();
+
+    const updateRequests = async () => {
+      try {
+        const reqs = await radioStore.getRequests();
+        const pending = reqs.filter((r) => r.status === 'pending');
+        setPendingRequestsCount(pending.length);
+      } catch {}
+    };
+
+    updateRequests();
+    const unsubRequests = radioStore.subscribe(updateRequests);
+
+    return () => {
+      unsub();
+      unsubRequests();
+    };
   }, []);
 
   // Restore music transmission when authenticated
@@ -176,14 +193,25 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
                 <Link
                   key={item.label}
                   href={item.href}
-                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all ${
+                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all ${
                     isActive
                       ? 'text-black bg-[#e5b45f] font-semibold shadow-md shadow-[#e5b45f]/25'
                       : 'text-gray-400 hover:text-white hover:bg-white/5'
                   }`}
                 >
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-black' : 'text-gray-400'}`} />
-                  <span>{item.label}</span>
+                  <div className="flex items-center gap-3">
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-black' : 'text-gray-400'}`} />
+                    <span>{item.label}</span>
+                  </div>
+                  {item.href === '/studio/requests' && pendingRequestsCount > 0 && (
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        isActive ? 'bg-black text-[#e5b45f]' : 'bg-[#e5b45f] text-black shadow-sm'
+                      }`}
+                    >
+                      {pendingRequestsCount}
+                    </span>
+                  )}
                 </Link>
               );
             })}

@@ -238,6 +238,16 @@ export default function NexoRadioPublicPage() {
                   </span>
                 )}
               </button>
+              <button
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  setIsRequestModalOpen(true);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl font-medium text-sm text-[#e5b45f] bg-[#e5b45f]/10 border border-[#e5b45f]/20 hover:bg-[#e5b45f]/20 transition-all"
+              >
+                <Music className="w-4 h-4 text-[#e5b45f]" />
+                Pedir una canción
+              </button>
               <Link
                 href="/studio/login"
                 className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl font-medium text-sm text-gray-400 hover:text-[#e5b45f]"

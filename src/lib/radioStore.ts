@@ -641,8 +641,20 @@ class RadioStore {
   // --- REQUESTS ---
   public async getRequests(): Promise<SongRequest[]> {
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('song_requests').select('*').order('created_at', { ascending: false });
-      if (!error && data && data.length > 0) return data as SongRequest[];
+      try {
+        const { data, error } = await supabase
+          .from('song_requests')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (!error && data) {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(REQUESTS_KEY, JSON.stringify(data));
+          }
+          return data as SongRequest[];
+        }
+      } catch (err) {
+        console.warn('Error fetching Supabase song_requests:', err);
+      }
     }
 
     if (typeof window !== 'undefined') {
@@ -652,34 +664,57 @@ class RadioStore {
           return JSON.parse(saved);
         } catch {}
       }
-      localStorage.setItem(REQUESTS_KEY, JSON.stringify(INITIAL_REQUESTS));
     }
-    return INITIAL_REQUESTS;
+    return [];
   }
 
   public async addRequest(req: Omit<SongRequest, 'id' | 'created_at' | 'status'>): Promise<SongRequest> {
-    const newReq: SongRequest = {
-      ...req,
-      id: 'req-' + Date.now(),
-      status: 'pending',
+    const payload = {
+      name: req.name.trim(),
+      song_title: req.song_title.trim(),
+      artist: req.artist.trim(),
+      dedication: req.dedication?.trim() || null,
+      status: 'pending' as const,
       created_at: new Date().toISOString(),
     };
 
     if (isSupabaseConfigured && supabase) {
-      const { data } = await supabase.from('song_requests').insert(newReq).select().single();
-      if (data) {
-        this.postSync();
-        return data as SongRequest;
+      try {
+        const { data, error } = await supabase
+          .from('song_requests')
+          .insert(payload)
+          .select()
+          .single();
+
+        if (!error && data) {
+          const created = data as SongRequest;
+          const current = await this.getRequests();
+          const updated = [created, ...current.filter((r) => r.id !== created.id)];
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(REQUESTS_KEY, JSON.stringify(updated));
+          }
+          this.postSync();
+          return created;
+        } else if (error) {
+          console.warn('Supabase addRequest error:', error.message);
+        }
+      } catch (err) {
+        console.warn('Supabase addRequest exception:', err);
       }
     }
 
+    const fallbackReq: SongRequest = {
+      ...payload,
+      id: 'req-' + Date.now(),
+      dedication: payload.dedication || undefined,
+    };
     const current = await this.getRequests();
-    const updated = [newReq, ...current];
+    const updated = [fallbackReq, ...current];
     if (typeof window !== 'undefined') {
       localStorage.setItem(REQUESTS_KEY, JSON.stringify(updated));
     }
     this.postSync();
-    return newReq;
+    return fallbackReq;
   }
 
   public async updateRequestStatus(id: string, status: SongRequest['status']): Promise<void> {
