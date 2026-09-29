@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Volume2, VolumeX, Heart, Radio, SkipBack, SkipForward } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Heart, Radio } from 'lucide-react';
 import { radioStore } from '@/lib/radioStore';
 import { StationState } from '@/lib/types';
 
@@ -18,25 +18,8 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
   const [isLiked, setIsLiked] = useState(false);
   const [heartAnimation, setHeartAnimation] = useState(false);
   const [likeToast, setLikeToast] = useState<string | null>(null);
-  const [showVolumeSlider, setShowVolumeSlider] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const volumeRef = useRef<HTMLDivElement | null>(null);
-
-  // Close volume popover when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
-      if (volumeRef.current && !volumeRef.current.contains(event.target as Node)) {
-        setShowVolumeSlider(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('touchstart', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
-    };
-  }, []);
 
   // Sync station state in real-time
   useEffect(() => {
@@ -320,12 +303,12 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
       </div>
 
       {/* Primary Player Controls */}
-      <div className="flex items-center justify-center gap-4 sm:gap-6 mt-6 z-10">
+      <div className="flex items-center justify-center gap-6 sm:gap-8 mt-6 z-10">
         {/* Like Button with Toast */}
         <div className="relative flex items-center justify-center">
           <button
             onClick={handleToggleFavorite}
-            className={`p-2.5 rounded-full transition-all duration-200 active:scale-90 ${
+            className={`p-3 rounded-full transition-all duration-200 active:scale-90 ${
               isLiked
                 ? 'text-rose-500 hover:text-rose-400 bg-rose-500/10'
                 : 'text-gray-400 hover:text-white hover:bg-white/5'
@@ -334,7 +317,7 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
             aria-label={isLiked ? 'Quitar de la playlist de favoritas' : 'Guardar en la playlist de favoritas'}
           >
             <Heart
-              className={`w-5 h-5 sm:w-6 sm:h-6 transition-transform duration-300 ${
+              className={`w-6 h-6 sm:w-7 sm:h-7 transition-transform duration-300 ${
                 isLiked ? 'fill-current' : ''
               } ${heartAnimation ? 'scale-125 text-rose-500 animate-pulse' : ''}`}
             />
@@ -348,120 +331,44 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
           )}
         </div>
 
-        {/* Previous Track (Disabled in linear radio) */}
-        <button
-          disabled
-          className="p-2.5 text-gray-600 cursor-not-allowed opacity-50"
-          title="Emisión lineal en vivo"
-        >
-          <SkipBack className="w-5 h-5 sm:w-6 sm:h-6" />
-        </button>
-
         {/* Big Glowing Play / Pause Button */}
         <button
           onClick={togglePlay}
           disabled={isLoading}
           aria-label={isPlaying ? 'Pausar transmisión' : 'Escuchar en vivo'}
-          className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all duration-300 transform active:scale-95 ${
+          className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center transition-all duration-300 transform active:scale-95 ${
             isPlaying
-              ? 'bg-[#e5b45f] text-black shadow-lg shadow-[#e5b45f]/40 ring-4 ring-[#e5b45f]/20'
+              ? 'bg-[#e5b45f] text-black shadow-lg shadow-[#e5b45f]/40 ring-4 ring-[#e5b45f]/20 scale-105'
               : 'bg-gradient-to-tr from-[#d9a149] to-[#f3c87a] text-black shadow-xl shadow-[#e5b45f]/30 hover:scale-105'
           }`}
         >
           {isLoading ? (
-            <div className="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin" />
+            <div className="w-7 h-7 border-2 border-black border-t-transparent rounded-full animate-spin" />
           ) : isPlaying ? (
-            <Pause className="w-6 h-6 sm:w-7 sm:h-7 fill-current" />
+            <Pause className="w-7 h-7 sm:w-8 sm:h-8 fill-current" />
           ) : (
-            <Play className="w-6 h-6 sm:w-7 sm:h-7 fill-current ml-1" />
+            <Play className="w-7 h-7 sm:w-8 sm:h-8 fill-current ml-1" />
           )}
         </button>
 
-        {/* Next Track (Disabled in linear radio) */}
+        {/* Mute / Unmute Button */}
         <button
-          disabled
-          className="p-2.5 text-gray-600 cursor-not-allowed opacity-50"
-          title="Emisión lineal en vivo"
+          type="button"
+          onClick={() => setIsMuted((prev) => !prev)}
+          className={`p-3 rounded-full transition-all duration-200 active:scale-90 ${
+            isMuted
+              ? 'text-rose-400 bg-rose-500/10'
+              : 'text-gray-400 hover:text-white hover:bg-white/5'
+          }`}
+          title={isMuted ? 'Activar sonido' : 'Silenciar'}
+          aria-label={isMuted ? 'Activar sonido' : 'Silenciar'}
         >
-          <SkipForward className="w-5 h-5 sm:w-6 sm:h-6" />
+          {isMuted ? (
+            <VolumeX className="w-6 h-6 sm:w-7 sm:h-7 text-rose-400" />
+          ) : (
+            <Volume2 className="w-6 h-6 sm:w-7 sm:h-7" />
+          )}
         </button>
-
-        {/* Volume Control with Popover Slider desplegable hacia arriba */}
-        <div
-          ref={volumeRef}
-          className="relative flex items-center justify-center"
-          onMouseEnter={() => setShowVolumeSlider(true)}
-          onMouseLeave={() => setShowVolumeSlider(false)}
-        >
-          {/* Vertical Slider Popover desplegable hacia arriba */}
-          <div
-            className={`absolute bottom-full mb-3 left-1/2 -translate-x-1/2 flex flex-col items-center bg-[#12141a]/95 backdrop-blur-xl border border-white/10 rounded-2xl py-3 px-2 shadow-2xl transition-all duration-300 z-50 ${
-              showVolumeSlider
-                ? 'opacity-100 translate-y-0 pointer-events-auto scale-100'
-                : 'opacity-0 translate-y-2 pointer-events-none scale-95'
-            }`}
-          >
-            {/* Porcentaje de volumen */}
-            <span className="text-[10px] font-bold text-[#e5b45f] mb-2 select-none font-mono">
-              {isMuted ? '0%' : `${Math.round(volume * 100)}%`}
-            </span>
-
-            {/* Slider vertical */}
-            <div className="h-28 w-7 flex items-center justify-center relative">
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value={isMuted ? 0 : volume}
-                onChange={(e) => {
-                  setVolume(parseFloat(e.target.value));
-                  if (isMuted) setIsMuted(false);
-                }}
-                className="w-24 h-1.5 -rotate-90 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-[#e5b45f]"
-              />
-            </div>
-
-            {/* Botón de silencio rápido */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsMuted(!isMuted);
-              }}
-              className="mt-2 text-gray-400 hover:text-white transition-colors p-1"
-              title={isMuted ? 'Activar sonido' : 'Silenciar'}
-            >
-              {isMuted || volume === 0 ? (
-                <VolumeX className="w-3.5 h-3.5 text-rose-400" />
-              ) : (
-                <Volume2 className="w-3.5 h-3.5 text-gray-300 hover:text-[#e5b45f]" />
-              )}
-            </button>
-
-            {/* Flecha decorativa inferior */}
-            <div className="w-2 h-2 bg-[#12141a] rotate-45 border-r border-b border-white/10 -bottom-1 left-1/2 -translate-x-1/2 absolute" />
-          </div>
-
-          {/* Botón icono de volumen perfectamente alineado con los demás controles */}
-          <button
-            type="button"
-            onClick={() => setShowVolumeSlider(!showVolumeSlider)}
-            className={`p-2.5 rounded-full transition-all duration-200 active:scale-90 ${
-              showVolumeSlider
-                ? 'text-[#e5b45f] bg-[#e5b45f]/15 ring-1 ring-[#e5b45f]/30'
-                : 'text-gray-400 hover:text-white'
-            }`}
-            title="Ajustar volumen"
-            aria-label="Control de volumen"
-          >
-            {isMuted || volume === 0 ? (
-              <VolumeX className="w-5 h-5 sm:w-6 sm:h-6 text-rose-400" />
-            ) : (
-              <Volume2 className="w-5 h-5 sm:w-6 sm:h-6" />
-            )}
-          </button>
-        </div>
       </div>
 
       {/* Live Badge Status */}
