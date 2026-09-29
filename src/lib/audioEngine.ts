@@ -126,8 +126,9 @@ class AudioEngine {
       this.masterGainNode.connect(this.masterDestination);
       this.masterGainNode.connect(this.masterAnalyser);
 
-      // Master -> monitorGain -> speakers (for DJ monitoring in studio)
-      this.masterGainNode.connect(this.monitorGainNode);
+      // Studio Monitor: Connect from musicGainNode so the DJ hears the track and smooth ducking
+      // but without the DJ's own microphone echoing through the room speakers
+      this.musicGainNode.connect(this.monitorGainNode);
       this.monitorGainNode.connect(this.ctx.destination);
 
       // Audio element listeners
@@ -453,9 +454,8 @@ class AudioEngine {
       this.micGainNode.gain.setValueAtTime(this.micGainNode.gain.value, now);
       this.micGainNode.gain.linearRampToValueAtTime(this.micVolume, now + 0.25);
 
-      // Lower monitor speaker for mic to prevent feedback in studio
       if (this.monitorGainNode) {
-        this.monitorGainNode.gain.setValueAtTime(0.35, now);
+        this.monitorGainNode.gain.setValueAtTime(1.0, now);
       }
 
       this.isMicOnAir = true;
