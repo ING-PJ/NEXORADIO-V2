@@ -182,12 +182,15 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
     };
   }, []);
 
-  // Update volume
+  // Update volume (with automatic ducking to 15% if DJ is speaking in direct track mode)
   useEffect(() => {
     if (audioRef.current) {
-      audioRef.current.volume = isMuted ? 0 : volume;
+      const baseVol = isMuted ? 0 : volume;
+      const isDirectTrack = !audioRef.current.src.includes('/live');
+      const effectiveVol = isDirectTrack && stationState.is_mic_active ? baseVol * 0.15 : baseVol;
+      audioRef.current.volume = effectiveVol;
     }
-  }, [volume, isMuted]);
+  }, [volume, isMuted, stationState.is_mic_active]);
 
   // Resynchronize listener playback position with studio air progress (Only in offline serverless mode)
   useEffect(() => {
