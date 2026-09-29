@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Volume2, VolumeX, Heart, Radio } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Heart, Radio, SkipBack, SkipForward } from 'lucide-react';
 import { radioStore } from '@/lib/radioStore';
 import { StationState } from '@/lib/types';
 
@@ -138,18 +138,6 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
     }
   }, [stationState.current_song_id, stationState.current_song_title, stationState.current_song_url, isPlaying]);
 
-  // When station is broadcasting live, automatically switch listener to live stream if playing fallback
-  useEffect(() => {
-    if (LIVE_STREAM_URL && isPlaying && stationState.is_live && audioRef.current) {
-      if (!audioRef.current.src.includes('/live')) {
-        console.log('[Player] Station is live, switching to live broadcast stream...');
-        audioRef.current.src = `${LIVE_STREAM_URL}?t=${Date.now()}`;
-        audioRef.current.load();
-        audioRef.current.play().catch(console.warn);
-      }
-    }
-  }, [stationState.is_live, isPlaying]);
-
   // Initialize audio element
   useEffect(() => {
     const audio = new Audio();
@@ -182,15 +170,12 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
     };
   }, []);
 
-  // Update volume (with automatic ducking to 15% if DJ is speaking in direct track mode)
+  // Update volume
   useEffect(() => {
     if (audioRef.current) {
-      const baseVol = isMuted ? 0 : volume;
-      const isDirectTrack = !audioRef.current.src.includes('/live');
-      const effectiveVol = isDirectTrack && stationState.is_mic_active ? baseVol * 0.15 : baseVol;
-      audioRef.current.volume = effectiveVol;
+      audioRef.current.volume = isMuted ? 0 : volume;
     }
-  }, [volume, isMuted, stationState.is_mic_active]);
+  }, [volume, isMuted]);
 
   // Resynchronize listener playback position with studio air progress (Only in offline serverless mode)
   useEffect(() => {
@@ -363,6 +348,15 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
           )}
         </div>
 
+        {/* Previous Track (Disabled in linear radio) */}
+        <button
+          disabled
+          className="p-2.5 text-gray-600 cursor-not-allowed opacity-50"
+          title="Emisión lineal en vivo"
+        >
+          <SkipBack className="w-5 h-5 sm:w-6 sm:h-6" />
+        </button>
+
         {/* Big Glowing Play / Pause Button */}
         <button
           onClick={togglePlay}
@@ -381,6 +375,15 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
           ) : (
             <Play className="w-6 h-6 sm:w-7 sm:h-7 fill-current ml-1" />
           )}
+        </button>
+
+        {/* Next Track (Disabled in linear radio) */}
+        <button
+          disabled
+          className="p-2.5 text-gray-600 cursor-not-allowed opacity-50"
+          title="Emisión lineal en vivo"
+        >
+          <SkipForward className="w-5 h-5 sm:w-6 sm:h-6" />
         </button>
 
         {/* Volume Control with Popover Slider desplegable hacia arriba */}

@@ -12,7 +12,7 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 }
 
 let headerChunk = null;
-let headerContentType = 'audio/webm; codecs=opus';
+let headerContentType = 'audio/mp4';
 const listeners = new Set();
 let isBroadcasting = false;
 let broadcasterSocket = null;
@@ -224,7 +224,6 @@ wss.on('connection', (ws) => {
     console.log('[Broadcaster] NEXO Studio disconnected.');
     isBroadcasting = false;
     broadcasterSocket = null;
-    headerChunk = null;
     if (upstreamIcecastReq) {
       upstreamIcecastReq.end();
       upstreamIcecastReq = null;

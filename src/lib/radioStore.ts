@@ -10,7 +10,6 @@ const QUEUE_KEY = 'nexo_radio_queue_v1';
 
 class RadioStore {
   private broadcastChannel: BroadcastChannel | null = null;
-  private supabaseChannel: any = null;
   private listeners: Set<() => void> = new Set();
 
   constructor() {
@@ -53,20 +52,8 @@ class RadioStore {
           });
 
         // Listen for live station updates, incoming requests, and active presence
-        const channel = supabase.channel('nexo_global_realtime', {
-          config: { broadcast: { self: false } },
-        });
-        this.supabaseChannel = channel;
-
+        const channel = supabase.channel('nexo_global_realtime');
         channel
-          .on('broadcast', { event: 'STATE_CHANGED' }, ({ payload }) => {
-            if (payload) {
-              const current = this.getStationState();
-              const merged = { ...current, ...payload };
-              localStorage.setItem(STATE_KEY, JSON.stringify(merged));
-              this.notify();
-            }
-          })
           .on(
             'postgres_changes',
             { event: '*', schema: 'public', table: 'station_state' },
@@ -695,28 +682,14 @@ class RadioStore {
         updated_at: new Date().toISOString(),
       };
 
-      if (this.supabaseChannel) {
-        this.supabaseChannel.send({
-          type: 'broadcast',
-          event: 'STATE_CHANGED',
-          payload: updated,
-        }).catch(() => {});
-      }
-
-      if (supabase) {
-        Promise.resolve(
-          supabase
-            .from('station_state')
-            .upsert(payload, { onConflict: 'id' })
-        ).then(({ error }: any) => {
-          if (error && supabase) {
+      supabase
+        .from('station_state')
+        .upsert(payload, { onConflict: 'id' })
+        .then(({ error }) => {
+          if (error) {
             console.warn('Supabase station_state sync notice:', error.message);
-            Promise.resolve(
-              supabase.from('station_state').update(payload).eq('id', 'current')
-            ).catch(() => {});
           }
-        }).catch(() => {});
-      }
+        });
     }
 
     this.postSync();
