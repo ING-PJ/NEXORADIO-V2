@@ -213,7 +213,7 @@ class AudioEngine {
       if (startTime > 0) {
         this.audioElement.currentTime = startTime;
       }
-      if (!this.isBroadcasting && typeof window !== 'undefined' && localStorage.getItem('nexo_broadcast_enabled') !== 'false') {
+      if (!this.isBroadcasting) {
         this.startBroadcasting();
       }
       radioStore.updateStationState({
@@ -922,7 +922,7 @@ class AudioEngine {
         await this.audioElement.play();
         this.isPlaying = true;
         this.needsUserInteraction = false;
-        if (!this.isBroadcasting && typeof window !== 'undefined' && localStorage.getItem('nexo_broadcast_enabled') !== 'false') {
+        if (!this.isBroadcasting) {
           this.startBroadcasting();
         }
         this.persistSession();

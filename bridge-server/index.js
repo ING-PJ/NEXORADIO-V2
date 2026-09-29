@@ -12,7 +12,7 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 }
 
 let headerChunk = null;
-let headerContentType = 'audio/mp4';
+let headerContentType = 'audio/webm; codecs=opus';
 const listeners = new Set();
 let isBroadcasting = false;
 let broadcasterSocket = null;

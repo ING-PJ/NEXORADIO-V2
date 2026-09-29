@@ -204,23 +204,21 @@ export default function StudioLoginPage() {
             </button>
           </form>
 
-          {/* Quick Demo Access (Solo para desarrollo local sin Supabase) */}
-          {!isSupabaseConfigured && (
-            <div className="pt-2">
-              <div className="relative flex items-center justify-center my-4">
-                <div className="border-t border-white/10 w-full" />
-                <span className="bg-[#0e1015] px-3 text-[11px] text-gray-500 uppercase">o</span>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleQuickDemo}
-                className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-white bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#e5b45f]/40 transition-all flex items-center justify-center gap-2"
-              >
-                <span>Acceso directo modo demostración (Locutor)</span>
-              </button>
+          {/* Quick Demo Access */}
+          <div className="pt-2">
+            <div className="relative flex items-center justify-center my-4">
+              <div className="border-t border-white/10 w-full" />
+              <span className="bg-[#0e1015] px-3 text-[11px] text-gray-500 uppercase">o</span>
             </div>
-          )}
+
+            <button
+              type="button"
+              onClick={handleQuickDemo}
+              className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-white bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#e5b45f]/40 transition-all flex items-center justify-center gap-2"
+            >
+              <span>Acceso directo a Cabina (Modo Locutor)</span>
+            </button>
+          </div>
 
           <div className="text-center text-xs text-gray-500 pt-2">
             ¿No tienes una cuenta?{' '}
