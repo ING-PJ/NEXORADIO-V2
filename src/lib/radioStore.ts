@@ -231,15 +231,24 @@ class RadioStore {
   }
 
   public async deleteSong(id: string): Promise<boolean> {
+    const current = await this.getSongs();
+    const songToDelete = current.find((s) => s.id === id);
+
     if (isSupabaseConfigured && supabase) {
       try {
+        if (songToDelete?.file_url?.includes('/storage/v1/object/public/songs/')) {
+          const parts = songToDelete.file_url.split('/public/songs/');
+          if (parts[1]) {
+            const rawFilename = decodeURIComponent(parts[1].split('?')[0]);
+            await supabase.storage.from('songs').remove([rawFilename]);
+          }
+        }
         await supabase.from('playlist_songs').delete().eq('song_id', id);
         await supabase.from('songs').delete().eq('id', id);
       } catch (e) {
         console.warn('Supabase deleteSong notice:', e);
       }
     }
-    const current = await this.getSongs();
     const updated = current.filter((s) => s.id !== id);
     if (typeof window !== 'undefined') {
       localStorage.setItem(SONGS_KEY, JSON.stringify(updated));
@@ -262,6 +271,64 @@ class RadioStore {
 
     this.postSync();
     return true;
+  }
+
+  // Real storage synchronization with Supabase Storage bucket 'songs'
+  public async getStorageUsage(): Promise<{
+    usedBytes: number;
+    totalLimitBytes: number;
+    filesCount: number;
+    isSupabase: boolean;
+  }> {
+    const limitGb = parseFloat(process.env.NEXT_PUBLIC_STORAGE_LIMIT_GB || '1');
+    const totalLimitBytes = limitGb * 1024 * 1024 * 1024;
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data: files, error } = await supabase.storage.from('songs').list('', { limit: 1000 });
+        if (!error && files && files.length > 0) {
+          const usedBytes = files.reduce((acc, f) => {
+            const size = f.metadata?.size || f.metadata?.contentLength || 0;
+            return acc + size;
+          }, 0);
+          return {
+            usedBytes,
+            totalLimitBytes,
+            filesCount: files.length,
+            isSupabase: true,
+          };
+        }
+      } catch (err) {
+        console.warn('Could not query Supabase storage bucket:', err);
+      }
+
+      try {
+        const { data: songs, error } = await supabase.from('songs').select('file_size');
+        if (!error && songs && songs.length > 0) {
+          const usedBytes = songs.reduce((acc, s) => acc + (s.file_size || 0), 0);
+          return {
+            usedBytes,
+            totalLimitBytes,
+            filesCount: songs.length,
+            isSupabase: true,
+          };
+        }
+      } catch (err) {
+        console.warn('Could not query Supabase songs table:', err);
+      }
+    }
+
+    const currentSongs = await this.getSongs();
+    const usedBytes = currentSongs.reduce((acc, s) => {
+      return acc + (s.file_size || (s.duration ? s.duration * 18000 : 4500000));
+    }, 0);
+
+    return {
+      usedBytes,
+      totalLimitBytes,
+      filesCount: currentSongs.length,
+      isSupabase: false,
+    };
   }
 
   public async toggleFavorite(id: string): Promise<boolean> {
