@@ -7,6 +7,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 const STORAGE_KEY = 'nexo_live_chat_messages_v1';
 const USERNAME_KEY = 'nexo_chat_username';
 const USER_ID_KEY = 'nexo_chat_user_id';
+const HAS_CUSTOM_NAME_KEY = 'nexo_chat_has_custom_name_v1';
 const MAX_MESSAGES = 250;
 
 function generateUUID(): string {
@@ -306,11 +307,24 @@ class ChatStore {
     return name;
   }
 
-  public setUserName(newName: string) {
+  public hasCustomName(): boolean {
+    if (typeof window === 'undefined') return false;
+    const hasCustom = localStorage.getItem(HAS_CUSTOM_NAME_KEY) === 'true';
+    const name = localStorage.getItem(USERNAME_KEY);
+    if (!hasCustom || !name || name.trim().startsWith('Oyente #')) {
+      return false;
+    }
+    return true;
+  }
+
+  public setUserName(newName: string, isCustom = true) {
     if (typeof window === 'undefined') return;
     const trimmed = newName.trim();
     if (!trimmed) return;
     localStorage.setItem(USERNAME_KEY, trimmed);
+    if (isCustom) {
+      localStorage.setItem(HAS_CUSTOM_NAME_KEY, 'true');
+    }
     this.notify();
     try {
       window.dispatchEvent(new CustomEvent('nexo_username_changed', { detail: trimmed }));

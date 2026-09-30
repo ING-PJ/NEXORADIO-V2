@@ -12,6 +12,8 @@ import {
   Smile,
   ShieldCheck,
   ArrowDown,
+  Shuffle,
+  ArrowRight,
 } from 'lucide-react';
 import { chatStore } from '@/lib/chatStore';
 import { soundEffects } from '@/lib/soundEffects';
@@ -23,12 +25,28 @@ interface LiveChatViewProps {
   isCompact?: boolean;
 }
 
+const FUN_NICKNAMES = [
+  'NexoFan',
+  'RitmoStereo',
+  'DJ_Lover',
+  'Melomano',
+  'VibraPositiva',
+  'FrecuenciaTop',
+  'Rumbero',
+  'NexoLover',
+  'SuperOyente',
+  'BuenaOnda',
+  'OndaNexo',
+  'ZonaMusical',
+];
+
 export function LiveChatView({ isDj = false, onClose, isCompact = false }: LiveChatViewProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [userName, setUserName] = useState('');
-  const [isEditingName, setIsEditingName] = useState(false);
+  const [showNameModal, setShowNameModal] = useState(false);
   const [tempName, setTempName] = useState('');
+  const [nameError, setNameError] = useState('');
   const [currentUserId, setCurrentUserId] = useState('');
   const [isScrolledUp, setIsScrolledUp] = useState(false);
   const [newMessagesBelow, setNewMessagesBelow] = useState(0);
@@ -36,16 +54,24 @@ export function LiveChatView({ isDj = false, onClose, isCompact = false }: LiveC
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const isFirstLoadRef = useRef(true);
 
   useEffect(() => {
     setMessages(chatStore.getMessages());
-    setUserName(chatStore.getUserName());
-    setTempName(chatStore.getUserName());
+    const currentName = chatStore.getUserName();
+    setUserName(currentName);
     setCurrentUserId(chatStore.getUserId());
+
+    // Prompt immediately for nickname when entering chat if not configured yet
+    if (!isDj && !chatStore.hasCustomName()) {
+      setTempName(currentName.startsWith('Oyente #') ? '' : currentName);
+      setShowNameModal(true);
+    }
 
     const unsubscribe = chatStore.subscribe(() => {
       setMessages(chatStore.getMessages());
+      setUserName(chatStore.getUserName());
     });
 
     const unsubIncoming = chatStore.subscribeIncoming(() => {
@@ -56,7 +82,66 @@ export function LiveChatView({ isDj = false, onClose, isCompact = false }: LiveC
       unsubscribe();
       unsubIncoming();
     };
-  }, []);
+  }, [isDj]);
+
+  // Autofocus the name input when modal appears
+  useEffect(() => {
+    if (showNameModal) {
+      const timer = setTimeout(() => {
+        nameInputRef.current?.focus();
+        nameInputRef.current?.select();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [showNameModal]);
+
+  const handleRandomNickname = () => {
+    const base = FUN_NICKNAMES[Math.floor(Math.random() * FUN_NICKNAMES.length)];
+    const num = Math.floor(10 + Math.random() * 90);
+    setTempName(`${base}_${num}`);
+    setNameError('');
+    nameInputRef.current?.focus();
+  };
+
+  const handleConfirmName = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const clean = tempName.trim();
+    if (!clean) {
+      setNameError('Por favor ingresa tu nombre o apodo');
+      nameInputRef.current?.focus();
+      return;
+    }
+    if (clean.length < 2) {
+      setNameError('El nombre debe tener al menos 2 caracteres');
+      nameInputRef.current?.focus();
+      return;
+    }
+
+    chatStore.setUserName(clean, true);
+    setUserName(clean);
+    setNameError('');
+    setShowNameModal(false);
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 150);
+  };
+
+  const handleContinueAnonymous = () => {
+    const defaultName = chatStore.getUserName();
+    chatStore.setUserName(defaultName, true);
+    setUserName(defaultName);
+    setNameError('');
+    setShowNameModal(false);
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 150);
+  };
+
+  const handleOpenNameModal = () => {
+    setTempName(userName.startsWith('Oyente #') ? '' : userName);
+    setNameError('');
+    setShowNameModal(true);
+  };
 
   // Monitor user scroll position to avoid snapping while reading previous messages
   const handleScroll = () => {
@@ -95,17 +180,12 @@ export function LiveChatView({ isDj = false, onClose, isCompact = false }: LiveC
     }
   }, [messages.length]);
 
-  const handleSaveName = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (tempName.trim()) {
-      chatStore.setUserName(tempName.trim());
-      setUserName(tempName.trim());
-      setIsEditingName(false);
-    }
-  };
-
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isDj && !chatStore.hasCustomName()) {
+      handleOpenNameModal();
+      return;
+    }
     const text = inputText.trim();
     if (!text) return;
 
@@ -195,56 +275,21 @@ export function LiveChatView({ isDj = false, onClose, isCompact = false }: LiveC
       {/* User Nickname Banner */}
       {!isDj && (
         <div className="px-4 py-2 bg-white/[0.02] border-b border-white/5 flex items-center justify-between text-xs shrink-0">
-          {isEditingName ? (
-            <form onSubmit={handleSaveName} className="flex items-center gap-2 w-full">
-              <input
-                type="text"
-                value={tempName}
-                onChange={(e) => setTempName(e.target.value)}
-                maxLength={24}
-                autoFocus
-                placeholder="Tu apodo o nombre"
-                className="flex-1 px-2.5 py-1 rounded-lg bg-black/60 border border-[#e5b45f]/50 text-xs text-white focus:outline-none"
-              />
-              <button
-                type="submit"
-                className="p-1 rounded-lg bg-[#e5b45f] text-black hover:bg-[#f3c87a] transition-all"
-                title="Guardar nombre"
-              >
-                <Check className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setTempName(userName);
-                  setIsEditingName(false);
-                }}
-                className="p-1 rounded-lg bg-white/10 text-gray-300 hover:bg-white/20"
-                title="Cancelar"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </form>
-          ) : (
-            <>
-              <div className="flex items-center gap-1.5 text-gray-300">
-                <span className="text-[11px] text-gray-400">Chateando como:</span>
-                <span className="font-semibold text-[#e5b45f] truncate max-w-[150px]">
-                  {userName}
-                </span>
-              </div>
-              <button
-                onClick={() => {
-                  setTempName(userName);
-                  setIsEditingName(true);
-                }}
-                className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-white px-2 py-0.5 rounded-md hover:bg-white/5 transition-colors"
-              >
-                <Edit2 className="w-3 h-3" />
-                <span>Cambiar</span>
-              </button>
-            </>
-          )}
+          <div className="flex items-center gap-1.5 text-gray-300">
+            <span className="text-[11px] text-gray-400">Chateando como:</span>
+            <span className="font-semibold text-[#e5b45f] truncate max-w-[150px]">
+              {userName}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleOpenNameModal}
+            className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-[#e5b45f] px-2 py-0.5 rounded-md hover:bg-white/5 transition-colors"
+            title="Cambiar tu nombre o apodo"
+          >
+            <Edit2 className="w-3 h-3" />
+            <span>Cambiar</span>
+          </button>
         </div>
       )}
 
@@ -361,6 +406,11 @@ export function LiveChatView({ isDj = false, onClose, isCompact = false }: LiveC
           type="text"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
+          onFocus={() => {
+            if (!isDj && !chatStore.hasCustomName()) {
+              handleOpenNameModal();
+            }
+          }}
           placeholder={isDj ? 'Enviar mensaje oficial como DJ...' : 'Escribe un mensaje al aire...'}
           maxLength={300}
           className="flex-1 px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#e5b45f] transition-colors"
@@ -374,6 +424,99 @@ export function LiveChatView({ isDj = false, onClose, isCompact = false }: LiveC
           <Send className="w-4 h-4" />
         </button>
       </form>
+
+      {/* Name Entry Modal / Overlay (Pops up immediately when entering chat) */}
+      {showNameModal && !isDj && (
+        <div className="absolute inset-0 z-50 bg-[#07090c]/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-[#0e1218] border border-[#e5b45f]/30 rounded-2xl p-4 sm:p-5 shadow-2xl shadow-black flex flex-col items-center text-center relative animate-in zoom-in-95 duration-200 my-auto">
+            {/* Close button if user already has a custom name configured */}
+            {chatStore.hasCustomName() && (
+              <button
+                type="button"
+                onClick={() => setShowNameModal(false)}
+                className="absolute top-3 right-3 p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                title="Cerrar"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+
+            {/* Glowing Icon */}
+            <div className="w-12 h-12 rounded-2xl bg-[#e5b45f]/15 border border-[#e5b45f]/30 flex items-center justify-center text-[#e5b45f] shadow-lg shadow-[#e5b45f]/15 mb-3">
+              <Radio className="w-6 h-6 animate-pulse" />
+            </div>
+
+            {/* Title & subtitle */}
+            <div className="flex items-center gap-1.5 mb-1">
+              <Sparkles className="w-4 h-4 text-[#e5b45f]" />
+              <h3 className="text-base font-bold text-white tracking-wide">
+                ¡Bienvenido al Chat!
+              </h3>
+              <Sparkles className="w-4 h-4 text-[#e5b45f]" />
+            </div>
+            <p className="text-xs text-gray-400 mb-4 max-w-[270px] leading-relaxed">
+              Ingresa tu nombre o apodo para enviar mensajes a la cabina y participar con la comunidad.
+            </p>
+
+            {/* Form */}
+            <form onSubmit={handleConfirmName} className="w-full space-y-3">
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                  <User className="w-4 h-4 text-[#e5b45f]" />
+                </div>
+                <input
+                  ref={nameInputRef}
+                  type="text"
+                  value={tempName}
+                  onChange={(e) => {
+                    setTempName(e.target.value);
+                    if (nameError) setNameError('');
+                  }}
+                  placeholder="Tu nombre o apodo..."
+                  maxLength={20}
+                  className={`w-full pl-9 pr-9 py-2.5 rounded-xl bg-white/5 border ${
+                    nameError ? 'border-red-500/80 focus:border-red-500' : 'border-white/15 focus:border-[#e5b45f]'
+                  } text-white placeholder-gray-500 text-xs sm:text-sm focus:outline-none transition-all shadow-inner`}
+                />
+                <button
+                  type="button"
+                  onClick={handleRandomNickname}
+                  title="Sugerir apodo al azar"
+                  className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 hover:text-[#e5b45f] transition-colors"
+                >
+                  <Shuffle className="w-4 h-4" />
+                </button>
+              </div>
+
+              {nameError && (
+                <p className="text-[11px] text-red-400 font-medium text-left px-1">
+                  {nameError}
+                </p>
+              )}
+
+              <div className="flex flex-col gap-2 pt-1">
+                <button
+                  type="submit"
+                  className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#e5b45f] to-[#f3c87a] hover:from-[#f3c87a] hover:to-[#e5b45f] text-black font-bold text-xs uppercase tracking-wider shadow-lg shadow-[#e5b45f]/25 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <span>Entrar al Chat</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+
+                {!chatStore.hasCustomName() && (
+                  <button
+                    type="button"
+                    onClick={handleContinueAnonymous}
+                    className="text-[11px] text-gray-400 hover:text-gray-300 py-1 transition-colors cursor-pointer"
+                  >
+                    Continuar como oyente anónimo
+                  </button>
+                )}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
