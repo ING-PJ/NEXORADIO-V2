@@ -31,7 +31,8 @@ import { audioEngine } from '@/lib/audioEngine';
 import { radioStore } from '@/lib/radioStore';
 import { StudioChatHub } from '@/components/studio/StudioChatHub';
 import { MicrophoneSettingsModal } from '@/components/studio/MicrophoneSettingsModal';
-import { Song, StationState, Playlist } from '@/lib/types';
+import { OnlineListenersModal } from '@/components/studio/OnlineListenersModal';
+import { Song, StationState, Playlist, OnlineListener } from '@/lib/types';
 
 function StudioVuMeter({ type }: { type: 'mic' | 'music' }) {
   const [level, setLevel] = useState(0);
@@ -90,6 +91,8 @@ export default function StudioDashboardPage() {
   const [micError, setMicError] = useState('');
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [isMicModalOpen, setIsMicModalOpen] = useState(false);
+  const [isListenersModalOpen, setIsListenersModalOpen] = useState(false);
+  const [onlineListeners, setOnlineListeners] = useState<OnlineListener[]>([]);
 
   // Sync state
   useEffect(() => {
@@ -97,6 +100,7 @@ export default function StudioDashboardPage() {
       setStationState(radioStore.getStationState());
       setEngineState(audioEngine.getState());
       setQueue(radioStore.getQueue());
+      setOnlineListeners(radioStore.getOnlineListeners());
     };
 
     // Load catalog once on mount (cached in radioStore)
@@ -169,11 +173,11 @@ export default function StudioDashboardPage() {
   );
 
   return (
-    <div className="flex-1 flex flex-col p-6 space-y-6 max-w-[1600px] w-full mx-auto">
+    <div className="flex-1 flex flex-col p-4 sm:p-5 space-y-4 max-w-[1600px] w-full mx-auto">
       {/* ========================================================= */}
       {/* TOP STATUS BAR */}
       {/* ========================================================= */}
-      <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl glass-panel border border-white/5">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl glass-panel border border-white/5">
         <div className="flex items-center gap-3">
           {engineState.isBroadcasting ? (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-rose-500/15 border border-rose-500/40 text-rose-400 text-xs font-semibold">
@@ -189,9 +193,19 @@ export default function StudioDashboardPage() {
               <span>Estudio listo · Todo en orden para transmitir</span>
             </div>
           )}
-          <span className="hidden sm:inline text-xs text-gray-400">
-            Transmitiendo para <strong className="text-white">{stationState.listeners_count.toLocaleString()}</strong> {stationState.listeners_count === 1 ? 'oyente' : 'oyentes'}
-          </span>
+
+          {/* Interactive Listeners Badge */}
+          <button
+            onClick={() => setIsListenersModalOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-gray-300 hover:text-white transition-all shadow-sm group active:scale-95"
+            title="Ver quiénes nos están escuchando en vivo"
+          >
+            <Users className="w-3.5 h-3.5 text-[#e5b45f] group-hover:scale-110 transition-transform" />
+            <span>
+              Transmitiendo para <strong className="text-white font-bold underline decoration-[#e5b45f]/40 underline-offset-4">{stationState.listeners_count}</strong> {stationState.listeners_count === 1 ? 'oyente' : 'oyentes'}
+            </span>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
+          </button>
         </div>
 
         <div className="flex items-center gap-3">
@@ -229,226 +243,227 @@ export default function StudioDashboardPage() {
       {/* ========================================================= */}
       {/* MAIN CABINA LAYOUT: LEFT COLUMN (8) + RIGHT CHAT (4) */}
       {/* ========================================================= */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
 
         {/* LEFT COLUMN: BROADCAST DECK + QUEUE/LIBRARY */}
-        <div className="xl:col-span-8 flex flex-col gap-6 min-w-0">
+        <div className="xl:col-span-8 flex flex-col gap-4 min-w-0">
 
-        {/* TOP DECK: NOW PLAYING + MIC + AUDIO LEVELS */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
-        {/* NOW PLAYING CARD */}
-        <div className="lg:col-span-5 rounded-3xl glass-panel p-5 border border-white/5 flex flex-col justify-between relative overflow-hidden">
-          <div className="flex items-start gap-4">
-            <div className="w-24 h-24 rounded-2xl overflow-hidden shrink-0 bg-neutral-900 border border-white/10 shadow-lg relative">
-              <img
-                src={engineState.currentSong?.cover_url || stationState.current_song_cover || '/cover_default.webp'}
-                alt="Cover"
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/cover_default.webp';
-                }}
-              />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                  Ahora suena
-                </span>
-                {engineState.isMicOnAir && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#e5b45f]/20 text-[#e5b45f] border border-[#e5b45f]/40 animate-pulse">
-                    Música atenuada
-                  </span>
-                )}
+        {/* TOP DECK: NOW PLAYING + MIC + AUDIO LEVELS (COMPACT) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-stretch">
+          {/* NOW PLAYING CARD */}
+          <div className="lg:col-span-5 rounded-2xl glass-panel p-4 border border-white/5 flex flex-col justify-between relative overflow-hidden">
+            <div className="flex items-center gap-3.5">
+              <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-neutral-900 border border-white/10 shadow-md relative group">
+                <img
+                  src={engineState.currentSong?.cover_url || stationState.current_song_cover || '/cover_default.webp'}
+                  alt="Cover"
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = '/cover_default.webp';
+                  }}
+                />
               </div>
-              <h3 className="text-xl font-bold text-white truncate mt-1">
-                {engineState.currentSong?.title || stationState.current_song_title}
-              </h3>
-              <p className="text-sm font-medium text-[#e5b45f] truncate">
-                {engineState.currentSong?.artist || stationState.current_song_artist}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                    Ahora suena
+                  </span>
+                  {engineState.isMicOnAir && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#e5b45f]/20 text-[#e5b45f] border border-[#e5b45f]/40 animate-pulse">
+                      Atenuada
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-base font-bold text-white truncate mt-0.5" title={engineState.currentSong?.title || stationState.current_song_title}>
+                  {engineState.currentSong?.title || stationState.current_song_title}
+                </h3>
+                <p className="text-xs font-medium text-[#e5b45f] truncate" title={engineState.currentSong?.artist || stationState.current_song_artist}>
+                  {engineState.currentSong?.artist || stationState.current_song_artist}
+                </p>
+              </div>
+            </div>
+
+            {/* Progress bar and time */}
+            <div className="mt-3 space-y-1.5">
+              <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-[#d9a149] to-[#f3c87a] rounded-full transition-all duration-300"
+                  style={{
+                    width: `${
+                      engineState.duration > 0
+                        ? Math.min(100, (engineState.currentTime / engineState.duration) * 100)
+                        : 35
+                    }%`,
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono">
+                <span>{formatTime(engineState.currentTime)}</span>
+                <span>{formatTime(engineState.duration || 232)}</span>
+              </div>
+            </div>
+
+            {/* Mini Playback Transport */}
+            <div className="flex items-center justify-center gap-3 mt-2.5 pt-2.5 border-t border-white/5">
+              <button
+                onClick={() => audioEngine.prevTrack()}
+                className="p-1.5 text-gray-400 hover:text-white transition-colors"
+                title="Pista anterior"
+              >
+                <SkipBack className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => audioEngine.togglePlay()}
+                className="w-10 h-10 rounded-full bg-[#e5b45f] text-black flex items-center justify-center hover:bg-[#f3c87a] transition-all transform active:scale-95 shadow-md shadow-[#e5b45f]/25"
+                title={engineState.isPlaying ? 'Pausar' : 'Reproducir'}
+              >
+                {engineState.isPlaying ? (
+                  <Pause className="w-4 h-4 fill-current" />
+                ) : (
+                  <Play className="w-4 h-4 fill-current ml-0.5" />
+                )}
+              </button>
+              <button
+                onClick={() => audioEngine.nextTrack()}
+                className="p-1.5 text-gray-400 hover:text-white transition-colors"
+                title="Siguiente pista"
+              >
+                <SkipForward className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* CENTER ON-AIR MICROPHONE & DUCKING CONTROLLER */}
+          <div className="lg:col-span-3 rounded-2xl glass-panel p-4 border border-white/5 flex flex-col items-center justify-center text-center relative overflow-hidden">
+            {/* Ambient Glow */}
+            <div
+              className={`absolute inset-0 transition-opacity duration-700 pointer-events-none ${
+                engineState.isMicOnAir
+                  ? 'bg-gradient-to-b from-rose-500/20 via-transparent to-rose-500/10'
+                  : 'bg-gradient-to-b from-[#e5b45f]/10 via-transparent to-transparent'
+              }`}
+            />
+
+            {/* Circular Air Button */}
+            <button
+              onClick={handleToggleMic}
+              className={`relative z-10 w-20 h-20 rounded-full flex flex-col items-center justify-center transition-all duration-300 transform active:scale-95 shadow-lg ${
+                engineState.isMicOnAir
+                  ? 'bg-rose-600 text-white red-glow ring-4 ring-rose-500/30 animate-pulse'
+                  : 'bg-gradient-to-tr from-[#d9a149] to-[#f3c87a] text-black gold-glow hover:scale-105'
+              }`}
+            >
+              <Mic className="w-6 h-6 mb-0.5" />
+              <span className="text-[10px] font-black tracking-wider uppercase">
+                {engineState.isMicOnAir ? 'SALIR AL AIRE' : 'ENTRAR AL AIRE'}
+              </span>
+            </button>
+
+            <div className="relative z-10 mt-2.5 space-y-0.5">
+              <h4 className="text-xs font-bold text-white">
+                {engineState.isMicOnAir ? 'Micrófono al aire' : 'Micrófono apagado'}
+              </h4>
+              <p className="text-[11px] text-gray-400 max-w-[190px] leading-tight line-clamp-2">
+                {engineState.isMicOnAir
+                  ? 'Música atenuada al 15%.'
+                  : 'Ducking automático al hablar.'}
               </p>
+
+              <button
+                onClick={() => setIsMicModalOpen(true)}
+                className="mt-1.5 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white text-[10px] font-medium border border-white/5 transition-colors"
+              >
+                <Settings2 className="w-3 h-3 text-[#e5b45f]" />
+                <span>Ajustes</span>
+              </button>
             </div>
           </div>
 
-          {/* Progress bar and time */}
-          <div className="mt-6 space-y-2">
-            <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-[#d9a149] to-[#f3c87a] rounded-full transition-all duration-300"
-                style={{
-                  width: `${
-                    engineState.duration > 0
-                      ? Math.min(100, (engineState.currentTime / engineState.duration) * 100)
-                      : 35
-                  }%`,
-                }}
+          {/* AUDIO METERS & SLIDERS CARD */}
+          <div className="lg:col-span-4 rounded-2xl glass-panel p-4 border border-white/5 flex flex-col justify-between space-y-2.5">
+            <div className="flex items-center justify-between pb-1.5 border-b border-white/5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-gray-300">
+                Niveles de audio
+              </span>
+              <button
+                onClick={() => setIsMicModalOpen(true)}
+                className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-[#e5b45f] transition-colors"
+                title="Ajustes de calidad de micrófono"
+              >
+                <Settings2 className="w-3 h-3" />
+                <span>Calidad</span>
+              </button>
+            </div>
+
+            {/* Mic Meter & Slider */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1 text-gray-300 font-medium text-[11px]">
+                  <Mic className="w-3 h-3 text-[#e5b45f]" />
+                  Mic {engineState.isMicOnAir ? '(Al Aire)' : '(Muteado)'}
+                </span>
+                <div className="flex items-center gap-1 font-mono text-[11px]">
+                  {engineState.micVolume > 1 && (
+                    <span className="text-[9px] text-amber-400 font-bold bg-amber-400/10 px-1 py-0.2 rounded">
+                      +{Math.round((engineState.micVolume - 1) * 100)}%
+                    </span>
+                  )}
+                  <span className="text-white font-semibold">{Math.round(engineState.micVolume * 100)}%</span>
+                </div>
+              </div>
+              <StudioVuMeter type="mic" />
+              <input
+                type="range"
+                min="0"
+                max="2.5"
+                step="0.05"
+                value={engineState.micVolume}
+                onChange={(e) => audioEngine.setMicVolume(parseFloat(e.target.value))}
+                className="w-full h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-[#e5b45f]"
+                title="Ajustar ganancia del micrófono (hasta 250%)"
               />
             </div>
-            <div className="flex items-center justify-between text-[11px] text-gray-400 font-mono">
-              <span>{formatTime(engineState.currentTime)}</span>
-              <span>{formatTime(engineState.duration || 232)}</span>
-            </div>
-          </div>
 
-          {/* Mini Playback Transport */}
-          <div className="flex items-center justify-center gap-4 mt-4 pt-4 border-t border-white/5">
-            <button
-              onClick={() => audioEngine.prevTrack()}
-              className="p-2 text-gray-400 hover:text-white transition-colors"
-            >
-              <SkipBack className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => audioEngine.togglePlay()}
-              className="w-12 h-12 rounded-full bg-[#e5b45f] text-black flex items-center justify-center hover:bg-[#f3c87a] transition-all transform active:scale-95 shadow-md shadow-[#e5b45f]/25"
-            >
-              {engineState.isPlaying ? (
-                <Pause className="w-5 h-5 fill-current" />
-              ) : (
-                <Play className="w-5 h-5 fill-current ml-0.5" />
-              )}
-            </button>
-            <button
-              onClick={() => audioEngine.nextTrack()}
-              className="p-2 text-gray-400 hover:text-white transition-colors"
-            >
-              <SkipForward className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* CENTER ON-AIR MICROPHONE & DUCKING CONTROLLER */}
-        <div className="lg:col-span-3 rounded-3xl glass-panel p-6 border border-white/5 flex flex-col items-center justify-center text-center relative overflow-hidden">
-          {/* Ambient Glow */}
-          <div
-            className={`absolute inset-0 transition-opacity duration-700 pointer-events-none ${
-              engineState.isMicOnAir
-                ? 'bg-gradient-to-b from-rose-500/20 via-transparent to-rose-500/10'
-                : 'bg-gradient-to-b from-[#e5b45f]/10 via-transparent to-transparent'
-            }`}
-          />
-
-          {/* Big Circular Air Button */}
-          <button
-            onClick={handleToggleMic}
-            className={`relative z-10 w-28 h-28 rounded-full flex flex-col items-center justify-center transition-all duration-300 transform active:scale-95 ${
-              engineState.isMicOnAir
-                ? 'bg-rose-600 text-white red-glow ring-4 ring-rose-500/30 animate-pulse'
-                : 'bg-gradient-to-tr from-[#d9a149] to-[#f3c87a] text-black gold-glow hover:scale-105'
-            }`}
-          >
-            <Mic className="w-8 h-8 mb-1" />
-            <span className="text-[11px] font-extrabold tracking-wider uppercase">
-              {engineState.isMicOnAir ? 'SALIR DEL AIRE' : 'ENTRAR AL AIRE'}
-            </span>
-          </button>
-
-          <div className="relative z-10 mt-4 space-y-1">
-            <h4 className="text-sm font-bold text-white">
-              {engineState.isMicOnAir ? 'Micrófono al aire' : 'Micrófono apagado'}
-            </h4>
-            <p className="text-xs text-gray-400 max-w-[200px]">
-              {engineState.isMicOnAir
-                ? 'Música atenuada suavemente al 15%. Tu voz está mezclada al Master.'
-                : 'Pulsa para entrar al aire con ducking automático sobre la música.'}
-            </p>
-
-            <button
-              onClick={() => setIsMicModalOpen(true)}
-              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white text-[11px] font-medium border border-white/5 transition-colors"
-            >
-              <Settings2 className="w-3.5 h-3.5 text-[#e5b45f]" />
-              <span>Ajustes de Micrófono</span>
-            </button>
-          </div>
-        </div>
-
-        {/* AUDIO METERS & SLIDERS CARD */}
-        <div className="lg:col-span-4 rounded-3xl glass-panel p-6 border border-white/5 flex flex-col justify-between space-y-5">
-          <div className="flex items-center justify-between pb-2 border-b border-white/5">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-300">
-              Niveles de audio
-            </span>
-            <button
-              onClick={() => setIsMicModalOpen(true)}
-              className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-[#e5b45f] transition-colors"
-              title="Ajustes de calidad de micrófono"
-            >
-              <Settings2 className="w-3.5 h-3.5" />
-              <span>Calidad</span>
-            </button>
-          </div>
-
-          {/* Mic Meter & Slider */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="flex items-center gap-1.5 text-gray-300 font-medium">
-                <Mic className="w-3.5 h-3.5 text-[#e5b45f]" />
-                Micrófono {engineState.isMicOnAir ? '(Al Aire)' : '(Muteado)'}
-              </span>
-              <div className="flex items-center gap-1 font-mono text-xs">
-                {engineState.micVolume > 1 && (
-                  <span className="text-[10px] text-amber-400 font-bold bg-amber-400/10 px-1.5 py-0.5 rounded">
-                    +{Math.round((engineState.micVolume - 1) * 100)}% Boost
-                  </span>
-                )}
-                <span className="text-white font-semibold">{Math.round(engineState.micVolume * 100)}%</span>
+            {/* Music Meter & Slider */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1 text-gray-300 font-medium text-[11px]">
+                  <Volume2 className="w-3 h-3 text-[#e5b45f]" />
+                  Música {engineState.isMicOnAir && <span className="text-[#e5b45f] text-[10px]">(15%)</span>}
+                </span>
+                <span className="font-mono text-gray-400 text-[11px]">
+                  {engineState.isMicOnAir ? '15%' : `${Math.round(engineState.musicVolume * 100)}%`}
+                </span>
               </div>
+              <StudioVuMeter type="music" />
+              <input
+                type="range"
+                min="0"
+                max="1.5"
+                step="0.01"
+                value={engineState.musicVolume}
+                onChange={(e) => audioEngine.setMusicVolume(parseFloat(e.target.value))}
+                className="w-full h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-[#e5b45f]"
+              />
             </div>
-            {/* Visual VU Meter bar */}
-            <StudioVuMeter type="mic" />
-            <input
-              type="range"
-              min="0"
-              max="2.5"
-              step="0.05"
-              value={engineState.micVolume}
-              onChange={(e) => audioEngine.setMicVolume(parseFloat(e.target.value))}
-              className="w-full h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-[#e5b45f]"
-              title="Ajustar ganancia del micrófono (hasta 250%)"
-            />
-          </div>
 
-          {/* Music Meter & Slider */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="flex items-center gap-1.5 text-gray-300 font-medium">
-                <Volume2 className="w-3.5 h-3.5 text-[#e5b45f]" />
-                Música {engineState.isMicOnAir && <span className="text-[#e5b45f] text-[11px]">(atenuada a 15%)</span>}
-              </span>
-              <span className="font-mono text-gray-400">
-                {engineState.isMicOnAir ? '15%' : `${Math.round(engineState.musicVolume * 100)}%`}
-              </span>
+            {/* Master Volume */}
+            <div className="space-y-1 pt-1.5 border-t border-white/5">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-gray-400 font-medium">Master Salida</span>
+                <span className="font-mono text-gray-400">{Math.round(engineState.masterVolume * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="1.5"
+                step="0.01"
+                value={engineState.masterVolume}
+                onChange={(e) => audioEngine.setMasterVolume(parseFloat(e.target.value))}
+                className="w-full h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-white"
+              />
             </div>
-            {/* Visual VU Meter bar */}
-            <StudioVuMeter type="music" />
-            <input
-              type="range"
-              min="0"
-              max="1.5"
-              step="0.01"
-              value={engineState.musicVolume}
-              onChange={(e) => audioEngine.setMusicVolume(parseFloat(e.target.value))}
-              className="w-full h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-[#e5b45f]"
-            />
           </div>
-
-          {/* Master Volume */}
-          <div className="space-y-2 pt-2 border-t border-white/5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-400 font-medium">Master Salida</span>
-              <span className="font-mono text-gray-400">{Math.round(engineState.masterVolume * 100)}%</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="1.5"
-              step="0.01"
-              value={engineState.masterVolume}
-              onChange={(e) => audioEngine.setMasterVolume(parseFloat(e.target.value))}
-              className="w-full h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-white"
-            />
-          </div>
-        </div>
         </div>{/* end top-deck grid */}
 
         {/* BOTTOM DECK: QUEUE (6) + LIBRARY (6) */}
@@ -707,6 +722,13 @@ export default function StudioDashboardPage() {
       <MicrophoneSettingsModal
         isOpen={isMicModalOpen}
         onClose={() => setIsMicModalOpen(false)}
+      />
+
+      {/* Online Listeners Modal */}
+      <OnlineListenersModal
+        isOpen={isListenersModalOpen}
+        onClose={() => setIsListenersModalOpen(false)}
+        listeners={onlineListeners}
       />
     </div>
   );

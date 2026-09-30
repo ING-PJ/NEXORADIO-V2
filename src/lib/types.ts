@@ -65,3 +65,11 @@ export interface ChatMessage {
   user_id?: string;
 }
 
+export interface OnlineListener {
+  user_id: string;
+  user_name: string;
+  is_dj?: boolean;
+  joined_at?: string;
+  location?: string;
+}
+

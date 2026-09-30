@@ -23,12 +23,13 @@ import {
   X,
   ExternalLink,
   Clock,
+  Users,
 } from 'lucide-react';
 import { chatStore } from '@/lib/chatStore';
 import { radioStore } from '@/lib/radioStore';
 import { audioEngine } from '@/lib/audioEngine';
 import { soundEffects } from '@/lib/soundEffects';
-import { ChatMessage, SongRequest, Song } from '@/lib/types';
+import { ChatMessage, SongRequest, Song, OnlineListener } from '@/lib/types';
 
 interface StudioChatHubProps {
   className?: string;
@@ -41,9 +42,10 @@ export function StudioChatHub({
   allSongs = [],
   onSongQueued,
 }: StudioChatHubProps) {
-  const [activeTab, setActiveTab] = useState<'chat' | 'solicitudes'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'solicitudes' | 'oyentes'>('chat');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [requests, setRequests] = useState<SongRequest[]>([]);
+  const [onlineListeners, setOnlineListeners] = useState<OnlineListener[]>([]);
   const [inputText, setInputText] = useState('');
   const [soundEnabled, setSoundEnabled] = useState(soundEffects.isEnabled());
   const [isMicOnAir, setIsMicOnAir] = useState(audioEngine.getState().isMicOnAir);
@@ -61,6 +63,7 @@ export function StudioChatHub({
     // 1. Initial data
     setMessages(chatStore.getMessages());
     radioStore.getRequests().then((reqs) => setRequests(reqs));
+    setOnlineListeners(radioStore.getOnlineListeners());
     setSoundEnabled(soundEffects.isEnabled());
     setIsMicOnAir(audioEngine.getState().isMicOnAir);
 
@@ -96,12 +99,18 @@ export function StudioChatHub({
       setSoundEnabled(enabled);
     });
 
+    // 7. RadioStore listeners sync
+    const unsubRadio = radioStore.subscribe(() => {
+      setOnlineListeners(radioStore.getOnlineListeners());
+    });
+
     return () => {
       unsubChat();
       unsubChatIncoming();
       unsubReqIncoming();
       unsubEngine();
       unsubSound();
+      unsubRadio();
     };
   }, []);
 
@@ -307,6 +316,27 @@ export function StudioChatHub({
                 {pendingRequests.length}
               </span>
             )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('oyentes')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all relative ${
+              activeTab === 'oyentes'
+                ? 'bg-[#e5b45f] text-black shadow-md shadow-[#e5b45f]/25'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Oyentes</span>
+            <span
+              className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                activeTab === 'oyentes'
+                  ? 'bg-black text-[#e5b45f]'
+                  : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+              }`}
+            >
+              {onlineListeners.length}
+            </span>
           </button>
         </div>
 
@@ -572,6 +602,79 @@ export function StudioChatHub({
                 </div>
               );
             })
+          )}
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB CONTENT: OYENTES CONECTADOS EN VIVO */}
+      {/* ========================================================= */}
+      {activeTab === 'oyentes' && (
+        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto p-4 space-y-3 scrollbar-thin scrollbar-thumb-white/10">
+          <div className="flex items-center justify-between px-1">
+            <span className="text-xs font-bold text-white flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              Sintonizando en vivo ({onlineListeners.length})
+            </span>
+            <span className="text-[10px] text-gray-400">Presencia en tiempo real</span>
+          </div>
+
+          {onlineListeners.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center p-8 text-gray-400">
+              <Users className="w-10 h-10 text-[#e5b45f] mb-3 opacity-60" />
+              <p className="text-sm font-bold text-white">Sin oyentes conectados</p>
+              <p className="text-xs text-gray-400 mt-1 max-w-xs">
+                Cuando los oyentes abran la radio web, aparecerán aquí con su nombre de chat.
+              </p>
+            </div>
+          ) : (
+            onlineListeners.map((listener, idx) => (
+              <div
+                key={`${listener.user_id}-${idx}`}
+                className="flex items-center justify-between p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 transition-all group"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="relative shrink-0">
+                    <div className="w-8 h-8 rounded-xl bg-neutral-800 border border-white/10 flex items-center justify-center text-xs font-bold text-[#e5b45f]">
+                      {(listener.user_name.slice(0, 2) || 'OY').toUpperCase()}
+                    </div>
+                    <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-[#090b0f]" />
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-semibold text-white truncate">
+                        {listener.user_name}
+                      </p>
+                      {listener.is_dj && (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#e5b45f]/20 text-[#e5b45f]">
+                          Tú (DJ)
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-gray-400 flex items-center gap-1 mt-0.5">
+                      <Clock className="w-2.5 h-2.5 text-gray-500" />
+                      <span>En sintonía</span>
+                    </p>
+                  </div>
+                </div>
+
+                {!listener.is_dj && (
+                  <button
+                    onClick={() => {
+                      setInputText(`¡Un saludo especial a @${listener.user_name} que nos escucha en vivo! 🎧✨ `);
+                      setActiveTab('chat');
+                      setTimeout(() => inputRef.current?.focus(), 100);
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-[#e5b45f]/10 hover:bg-[#e5b45f]/20 text-[#e5b45f] border border-[#e5b45f]/20 text-[11px] font-semibold transition-all shrink-0 active:scale-95"
+                    title="Mandar saludo al oyente por el chat"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>Saludar</span>
+                  </button>
+                )}
+              </div>
+            ))
           )}
         </div>
       )}

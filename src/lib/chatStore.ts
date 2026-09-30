@@ -312,6 +312,9 @@ class ChatStore {
     if (!trimmed) return;
     localStorage.setItem(USERNAME_KEY, trimmed);
     this.notify();
+    try {
+      window.dispatchEvent(new CustomEvent('nexo_username_changed', { detail: trimmed }));
+    } catch {}
   }
 
   public async sendMessage(

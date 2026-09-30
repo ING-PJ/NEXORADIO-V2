@@ -1,4 +1,4 @@
-import { Song, Playlist, SongRequest, StationState } from './types';
+import { Song, Playlist, SongRequest, StationState, OnlineListener } from './types';
 import { INITIAL_SONGS, INITIAL_PLAYLISTS, INITIAL_REQUESTS, INITIAL_STATION_STATE } from './mockData';
 import { supabase, isSupabaseConfigured } from './supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -14,6 +14,27 @@ class RadioStore {
   private realtimeChannel: RealtimeChannel | null = null;
   private listeners: Set<() => void> = new Set();
   private requestListeners: Set<(req: SongRequest) => void> = new Set();
+  private onlineListeners: OnlineListener[] = [];
+  private defaultOnlineListeners: OnlineListener[] = [
+    {
+      user_id: 'usr_sofia',
+      user_name: 'Sofía M.',
+      is_dj: false,
+      joined_at: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+    },
+    {
+      user_id: 'usr_carlos',
+      user_name: 'Carlos Ruiz',
+      is_dj: false,
+      joined_at: new Date(Date.now() - 7 * 60 * 1000).toISOString(),
+    },
+    {
+      user_id: 'usr_valentina',
+      user_name: 'Valentina P.',
+      is_dj: false,
+      joined_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
+    },
+  ];
 
   // In-memory caching & in-flight promise deduplication
   private cachedSongs: Song[] | null = null;
@@ -58,6 +79,13 @@ class RadioStore {
           if (e.key === PLAYLISTS_KEY) this.invalidatePlaylistsCache();
           if (e.key === REQUESTS_KEY) this.invalidateRequestsCache();
           this.notify();
+        }
+      });
+
+      // Listen for chat username updates to immediately re-sync presence
+      window.addEventListener('nexo_username_changed', (e: any) => {
+        if (e?.detail) {
+          this.trackCurrentPresence(e.detail);
         }
       });
 
@@ -131,15 +159,31 @@ class RadioStore {
           .on('presence', { event: 'sync' }, () => {
             if (this.realtimeChannel) {
               const presenceState = this.realtimeChannel.presenceState();
-              const count = Object.keys(presenceState).length;
-              this.setListenersCount(count);
+              const list: OnlineListener[] = [];
+              for (const key of Object.keys(presenceState)) {
+                const arr = presenceState[key] as any[];
+                if (Array.isArray(arr) && arr.length > 0) {
+                  const p = arr[0];
+                  list.push({
+                    user_id: p.user_id || key,
+                    user_name: p.user_name || 'Oyente',
+                    is_dj: Boolean(p.is_dj),
+                    joined_at: p.joined_at || new Date().toISOString(),
+                    location: p.location,
+                  });
+                }
+              }
+              if (list.length > 0) {
+                this.onlineListeners = list;
+                const nonDjCount = list.filter((l) => !l.is_dj).length;
+                this.setListenersCount(nonDjCount > 0 ? nonDjCount : list.length);
+              }
+              this.notify();
             }
           })
           .subscribe(async (status) => {
             if (status === 'SUBSCRIBED' && this.realtimeChannel) {
-              await this.realtimeChannel.track({
-                joined_at: new Date().toISOString(),
-              });
+              await this.trackCurrentPresence();
             }
           });
       }
@@ -1023,6 +1067,33 @@ class RadioStore {
       }
       this.notify();
     }
+  }
+
+  public async trackCurrentPresence(customName?: string) {
+    if (!this.realtimeChannel || typeof window === 'undefined') return;
+    try {
+      const isStudio = window.location.pathname.startsWith('/studio');
+      const storedName = customName || localStorage.getItem('nexo_chat_username');
+      const userId = localStorage.getItem('nexo_chat_user_id') || 'usr_' + Math.random().toString(36).slice(2, 8);
+
+      const payload: OnlineListener = {
+        user_id: userId,
+        user_name: isStudio ? '🎧 NEXO DJ (Cabina)' : (storedName || 'Oyente #' + Math.floor(100 + Math.random() * 900)),
+        is_dj: isStudio,
+        joined_at: new Date().toISOString(),
+      };
+
+      await this.realtimeChannel.track(payload);
+    } catch (err) {
+      console.warn('Realtime presence track error:', err);
+    }
+  }
+
+  public getOnlineListeners(): OnlineListener[] {
+    if (this.onlineListeners.length > 0) {
+      return [...this.onlineListeners];
+    }
+    return this.defaultOnlineListeners;
   }
 }
 
