@@ -186,11 +186,17 @@ export default function StudioDashboardPage() {
       )}
 
       {/* ========================================================= */}
-      {/* HERO SECTION: NOW PLAYING, AIR MIC, AUDIO METERS */}
+      {/* MAIN CABINA LAYOUT: LEFT COLUMN (8) + RIGHT CHAT (4) */}
       {/* ========================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+
+        {/* LEFT COLUMN: BROADCAST DECK + QUEUE/LIBRARY */}
+        <div className="xl:col-span-8 flex flex-col gap-6 min-w-0">
+
+        {/* TOP DECK: NOW PLAYING + MIC + AUDIO LEVELS */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
         {/* NOW PLAYING CARD */}
-        <div className="lg:col-span-5 rounded-3xl glass-panel p-6 border border-white/5 flex flex-col justify-between relative overflow-hidden">
+        <div className="lg:col-span-5 rounded-3xl glass-panel p-5 border border-white/5 flex flex-col justify-between relative overflow-hidden">
           <div className="flex items-start gap-4">
             <div className="w-24 h-24 rounded-2xl overflow-hidden shrink-0 bg-neutral-900 border border-white/10 shadow-lg relative">
               <img
@@ -438,16 +444,12 @@ export default function StudioDashboardPage() {
             />
           </div>
         </div>
-      </div>
+        </div>{/* end top-deck grid */}
 
-      {/* ========================================================= */}
-      {/* MIDDLE SECTION: QUEUE & LIBRARY (COL-7) + CABINA CHAT & REQUESTS HUB (COL-5) */}
-      {/* ========================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-        {/* LEFT COLUMN: QUEUE & MUSIC LIBRARY */}
-        <div className="lg:col-span-7 flex flex-col gap-6">
+        {/* BOTTOM DECK: QUEUE (6) + LIBRARY (6) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
           {/* QUEUE CARD */}
-          <div className="rounded-3xl glass-panel p-6 border border-white/5 flex flex-col justify-between flex-1">
+          <div className="lg:col-span-6 rounded-3xl glass-panel p-6 border border-white/5 flex flex-col justify-between flex-1">
             <div>
               <div className="flex items-center justify-between pb-3 border-b border-white/5">
                 <div className="flex items-center gap-2">
@@ -532,7 +534,7 @@ export default function StudioDashboardPage() {
           </div>
 
           {/* QUICK LIBRARY & PLAYLISTS CARD */}
-          <div className="rounded-3xl glass-panel p-6 border border-white/5 flex flex-col justify-between flex-1">
+          <div className="lg:col-span-6 rounded-3xl glass-panel p-6 border border-white/5 flex flex-col justify-between flex-1">
             <div>
               <div className="flex items-center justify-between pb-3 border-b border-white/5">
                 <div className="flex items-center gap-4">
@@ -648,13 +650,14 @@ export default function StudioDashboardPage() {
               </div>
             </div>
           </div>
-        </div>
+        </div>{/* end bottom-deck grid */}
+        </div>{/* end left column */}
 
-        {/* RIGHT COLUMN: DEDICATED CABINA CHAT & REQUESTS HUB */}
-        <div className="lg:col-span-5 flex flex-col">
+        {/* RIGHT COLUMN: FULL-HEIGHT CHAT HUB */}
+        <div className="xl:col-span-4 flex flex-col min-w-0">
           <StudioChatHub
             allSongs={allSongs}
-            className="h-full min-h-[720px]"
+            className="h-[740px] xl:h-[760px] shadow-2xl"
           />
         </div>
       </div>
