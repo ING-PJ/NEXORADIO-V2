@@ -28,6 +28,10 @@ class RadioStore {
   private requestsPromise: Promise<SongRequest[]> | null = null;
   private requestsCacheTime = 0;
 
+  private cachedStorageUsage: { usedBytes: number; totalLimitBytes: number; filesCount: number; isSupabase: boolean } | null = null;
+  private storageUsagePromise: Promise<{ usedBytes: number; totalLimitBytes: number; filesCount: number; isSupabase: boolean }> | null = null;
+  private storageUsageCacheTime = 0;
+
   private readonly CACHE_TTL_MS = 60000; // 60 seconds
 
   constructor() {
@@ -373,6 +377,34 @@ class RadioStore {
 
   // Real storage synchronization with Supabase Storage bucket 'songs'
   public async getStorageUsage(): Promise<{
+    usedBytes: number;
+    totalLimitBytes: number;
+    filesCount: number;
+    isSupabase: boolean;
+  }> {
+    const now = Date.now();
+    if (this.cachedStorageUsage && now - this.storageUsageCacheTime < this.CACHE_TTL_MS) {
+      return this.cachedStorageUsage;
+    }
+    if (this.storageUsagePromise) {
+      return this.storageUsagePromise;
+    }
+
+    this.storageUsagePromise = (async () => {
+      try {
+        const res = await this.fetchStorageUsageRaw();
+        this.cachedStorageUsage = res;
+        this.storageUsageCacheTime = Date.now();
+        return res;
+      } finally {
+        this.storageUsagePromise = null;
+      }
+    })();
+
+    return this.storageUsagePromise;
+  }
+
+  private async fetchStorageUsageRaw(): Promise<{
     usedBytes: number;
     totalLimitBytes: number;
     filesCount: number;

@@ -31,12 +31,57 @@ import { audioEngine } from '@/lib/audioEngine';
 import { radioStore } from '@/lib/radioStore';
 import { StudioChatHub } from '@/components/studio/StudioChatHub';
 import { MicrophoneSettingsModal } from '@/components/studio/MicrophoneSettingsModal';
-import { Song, StationState, AudioLevels, Playlist } from '@/lib/types';
+import { Song, StationState, Playlist } from '@/lib/types';
+
+function StudioVuMeter({ type }: { type: 'mic' | 'music' }) {
+  const [level, setLevel] = useState(0);
+
+  useEffect(() => {
+    let lastTime = 0;
+    const unsub = audioEngine.subscribeLevels((lvl) => {
+      const now = performance.now();
+      // Throttle to 20fps (50ms) to ensure butter-smooth performance without main thread saturation
+      if (now - lastTime >= 50) {
+        lastTime = now;
+        setLevel(type === 'mic' ? lvl.mic : lvl.music);
+      }
+    });
+    return () => unsub();
+  }, [type]);
+
+  const isMic = type === 'mic';
+
+  return (
+    <div className="h-2 w-full bg-neutral-900 rounded-full overflow-hidden flex gap-0.5 p-0.5">
+      {[...Array(20)].map((_, i) => {
+        const isActive = (level / 100) * 20 > i;
+        const isPeak = isMic ? i > 15 : i > 16;
+        return (
+          <div
+            key={i}
+            className={`flex-1 rounded-sm transition-all duration-75 ${
+              isActive
+                ? isPeak
+                  ? isMic
+                    ? 'bg-rose-500 shadow-sm shadow-rose-500/50'
+                    : 'bg-amber-400'
+                  : isMic
+                  ? i > 11
+                    ? 'bg-amber-400'
+                    : 'bg-emerald-400'
+                  : 'bg-[#e5b45f]'
+                : 'bg-neutral-800'
+            }`}
+          />
+        );
+      })}
+    </div>
+  );
+}
 
 export default function StudioDashboardPage() {
   const [stationState, setStationState] = useState<StationState>(radioStore.getStationState());
   const [engineState, setEngineState] = useState(audioEngine.getState());
-  const [levels, setLevels] = useState<AudioLevels>({ mic: 0, music: 0, master: 0 });
   const [queue, setQueue] = useState<Song[]>([]);
   const [allSongs, setAllSongs] = useState<Song[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
@@ -62,9 +107,6 @@ export default function StudioDashboardPage() {
     const unsubEngine = audioEngine.subscribe(() => {
       setEngineState(audioEngine.getState());
     });
-    const unsubLevels = audioEngine.subscribeLevels((lvl) => {
-      setLevels(lvl);
-    });
 
     updateState();
 
@@ -74,7 +116,6 @@ export default function StudioDashboardPage() {
     return () => {
       unsubStore();
       unsubEngine();
-      unsubLevels();
     };
   }, []);
 
@@ -354,26 +395,7 @@ export default function StudioDashboardPage() {
               </div>
             </div>
             {/* Visual VU Meter bar */}
-            <div className="h-2 w-full bg-neutral-900 rounded-full overflow-hidden flex gap-0.5 p-0.5">
-              {[...Array(20)].map((_, i) => {
-                const isActive = (levels.mic / 100) * 20 > i;
-                const isPeak = i > 15;
-                return (
-                  <div
-                    key={i}
-                    className={`flex-1 rounded-sm transition-all duration-75 ${
-                      isActive
-                        ? isPeak
-                          ? 'bg-rose-500 shadow-sm shadow-rose-500/50'
-                          : i > 11
-                          ? 'bg-amber-400'
-                          : 'bg-emerald-400'
-                        : 'bg-neutral-800'
-                    }`}
-                  />
-                );
-              })}
-            </div>
+            <StudioVuMeter type="mic" />
             <input
               type="range"
               min="0"
@@ -398,24 +420,7 @@ export default function StudioDashboardPage() {
               </span>
             </div>
             {/* Visual VU Meter bar */}
-            <div className="h-2 w-full bg-neutral-900 rounded-full overflow-hidden flex gap-0.5 p-0.5">
-              {[...Array(20)].map((_, i) => {
-                const isActive = (levels.music / 100) * 20 > i;
-                const isPeak = i > 16;
-                return (
-                  <div
-                    key={i}
-                    className={`flex-1 rounded-sm transition-all duration-75 ${
-                      isActive
-                        ? isPeak
-                          ? 'bg-amber-400'
-                          : 'bg-[#e5b45f]'
-                        : 'bg-neutral-800'
-                    }`}
-                  />
-                );
-              })}
-            </div>
+            <StudioVuMeter type="music" />
             <input
               type="range"
               min="0"

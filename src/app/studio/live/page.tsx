@@ -45,7 +45,14 @@ export default function StudioLivePage() {
 
     const unsubStore = radioStore.subscribe(update);
     const unsubEngine = audioEngine.subscribe(() => setEngineState(audioEngine.getState()));
-    const unsubLevels = audioEngine.subscribeLevels((l) => setLevels(l));
+    let lastLevelTime = 0;
+    const unsubLevels = audioEngine.subscribeLevels((l) => {
+      const now = performance.now();
+      if (now - lastLevelTime >= 50) {
+        lastLevelTime = now;
+        setLevels(l);
+      }
+    });
 
     update();
     audioEngine.restoreSession();
