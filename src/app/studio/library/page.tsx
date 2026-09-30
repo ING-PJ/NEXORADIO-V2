@@ -93,17 +93,28 @@ export default function StudioLibraryPage() {
     return Math.min(Math.max(pct, totalUsedBytes > 0 ? 1.5 : 0), 100);
   }, [totalUsedBytes, totalLimitBytes]);
 
+  const genericSongsCount = React.useMemo(() => {
+    return songs.filter((s) => radioStore.isGenericSong(s)).length;
+  }, [songs]);
+
   useEffect(() => {
     loadData();
+    const unsub = radioStore.subscribe(() => {
+      loadData();
+    });
+    return () => unsub();
   }, []);
 
-  const loadData = async () => {
-    const s = await radioStore.getSongs();
+  const loadData = async (forceRefresh = false) => {
+    const s = await radioStore.getSongs(forceRefresh);
     setSongs(s);
-    if (s.length > 0 && !selectedSongDetails) {
-      setSelectedSongDetails(s[0]);
-    }
-    const p = await radioStore.getPlaylists();
+    setSelectedSongDetails((prev) => {
+      if (prev && s.some((song) => song.id === prev.id)) {
+        return s.find((song) => song.id === prev.id) || null;
+      }
+      return s.length > 0 ? s[0] : null;
+    });
+    const p = await radioStore.getPlaylists(forceRefresh);
     setPlaylists(p);
     try {
       const storage = await radioStore.getStorageUsage();
@@ -129,15 +140,58 @@ export default function StudioLibraryPage() {
     await radioStore.toggleFavorite(id);
   };
 
-  const handleDeleteSelected = async () => {
-    if (confirm(`¿Eliminar ${selectedSongIds.size} canción(es)?`)) {
-      for (const id of Array.from(selectedSongIds)) {
-        await radioStore.deleteSong(id);
+  const handleDeleteSong = async (song: Song, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (confirm(`¿Eliminar la canción "${song.title}" de ${song.artist}?`)) {
+      // Optimistic update
+      setSongs((prev) => prev.filter((s) => s.id !== song.id));
+      setSelectedSongIds((prev) => {
+        const next = new Set(prev);
+        next.delete(song.id);
+        return next;
+      });
+      if (selectedSongDetails?.id === song.id) {
+        setSelectedSongDetails(null);
       }
-      setSelectedSongIds(new Set());
+      await radioStore.deleteSong(song.id);
+      await loadData(true);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedSongIds.size === 0) return;
+    if (confirm(`¿Eliminar ${selectedSongIds.size} canción(es) seleccionada(s)?`)) {
+      const idsToDelete = Array.from(selectedSongIds);
+      // Optimistic update
+      setSongs((prev) => prev.filter((s) => !selectedSongIds.has(s.id)));
       if (selectedSongDetails && selectedSongIds.has(selectedSongDetails.id)) {
         setSelectedSongDetails(null);
       }
+      setSelectedSongIds(new Set());
+      for (const id of idsToDelete) {
+        await radioStore.deleteSong(id);
+      }
+      await loadData(true);
+    }
+  };
+
+  const handleDeleteGenericSongs = async () => {
+    const genericCount = songs.filter((s) => radioStore.isGenericSong(s)).length;
+    if (genericCount === 0) {
+      alert('No se encontraron canciones genéricas de prueba en la biblioteca.');
+      return;
+    }
+    if (
+      confirm(
+        `¿Eliminar las ${genericCount} canciones genéricas/demo del programa (Summer Vibes, Flowers, etc.)?\n\nTu biblioteca quedará limpia y libre para alojar únicamente tu música.`
+      )
+    ) {
+      // Optimistic filter
+      setSongs((prev) => prev.filter((s) => !radioStore.isGenericSong(s)));
+      setSelectedSongIds(new Set());
+      setSelectedSongDetails(null);
+      await radioStore.deleteGenericSongs();
+      await loadData(true);
     }
   };
 
@@ -387,6 +441,17 @@ export default function StudioLibraryPage() {
             )}
           </div>
 
+          {genericSongsCount > 0 && (
+            <button
+              onClick={handleDeleteGenericSongs}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 font-semibold text-xs shadow-lg transition-all transform active:scale-95"
+              title="Eliminar todas las canciones genéricas de muestra del programa"
+            >
+              <Trash2 className="w-4 h-4 text-rose-400" />
+              <span>Quitar pistas demo ({genericSongsCount})</span>
+            </button>
+          )}
+
           <button
             onClick={() => setIsUploadModalOpen(true)}
             className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-[#e5b45f] text-black font-semibold text-xs shadow-lg shadow-[#e5b45f]/25 hover:bg-[#f3c87a] transition-all transform active:scale-95"
@@ -396,6 +461,25 @@ export default function StudioLibraryPage() {
           </button>
         </div>
       </div>
+
+      {/* Generic Demo Songs Alert Banner */}
+      {genericSongsCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent border border-amber-500/30 animate-in fade-in">
+          <div className="flex items-center gap-2.5 text-xs text-amber-200">
+            <Music2 className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              Tienes <strong>{genericSongsCount}</strong> canciones genéricas de muestra en tu biblioteca. ¿Deseas quitarlas para dejar solo tu música?
+            </span>
+          </div>
+          <button
+            onClick={handleDeleteGenericSongs}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-rose-500/20 text-amber-300 hover:text-rose-300 border border-amber-500/40 hover:border-rose-500/40 font-bold text-xs transition-all shadow-sm shrink-0"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Quitar canciones demo ahora</span>
+          </button>
+        </div>
+      )}
 
       {/* Filter Tabs & Search */}
       <div className="flex flex-wrap items-center justify-between gap-4 pb-2">
@@ -550,10 +634,16 @@ export default function StudioLibraryPage() {
                                 <span className="font-semibold text-white truncate max-w-[220px]" title={song.title}>
                                   {song.title}
                                 </span>
-                                {(!song.id.startsWith('song-') || (song.created_at && (Date.now() - new Date(song.created_at).getTime() < 86400000))) && (
-                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#e5b45f]/20 text-[#e5b45f] border border-[#e5b45f]/40 shrink-0">
-                                    NUEVA
+                                {radioStore.isGenericSong(song) ? (
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0" title="Canción genérica de prueba">
+                                    DEMO
                                   </span>
+                                ) : (
+                                  (!song.id.startsWith('song-') || (song.created_at && (Date.now() - new Date(song.created_at).getTime() < 86400000))) && (
+                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#e5b45f]/20 text-[#e5b45f] border border-[#e5b45f]/40 shrink-0">
+                                      NUEVA
+                                    </span>
+                                  )
                                 )}
                               </div>
                             </div>
@@ -591,6 +681,13 @@ export default function StudioLibraryPage() {
                               title="Agregar a la cola"
                             >
                               <Plus className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => handleDeleteSong(song, e)}
+                              className="p-1.5 rounded-lg bg-white/5 text-gray-400 hover:text-rose-400 hover:bg-rose-500/15 transition-colors"
+                              title="Eliminar canción de la biblioteca"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </td>
@@ -681,13 +778,8 @@ export default function StudioLibraryPage() {
                   <span>Reproducir pista</span>
                 </button>
                 <button
-                  onClick={async () => {
-                    if (confirm(`¿Eliminar canción "${selectedSongDetails.title}"?`)) {
-                      await radioStore.deleteSong(selectedSongDetails.id);
-                      setSelectedSongDetails(null);
-                    }
-                  }}
-                  className="w-full py-2 rounded-xl bg-white/5 text-rose-400 hover:bg-rose-500/10 font-semibold text-xs transition-all flex items-center justify-center gap-1.5"
+                  onClick={() => handleDeleteSong(selectedSongDetails)}
+                  className="w-full py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 border border-rose-500/20 shadow-sm"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>Eliminar de biblioteca</span>

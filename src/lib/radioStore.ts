@@ -251,6 +251,76 @@ class RadioStore {
     }
   }
 
+  public getDeletedSongIds(): Set<string> {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const saved = localStorage.getItem('nexo_radio_deleted_songs_v2');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return new Set(parsed);
+      }
+    } catch {}
+    return new Set();
+  }
+
+  public recordDeletedSongId(id: string): void {
+    if (typeof window === 'undefined' || !id) return;
+    try {
+      const current = this.getDeletedSongIds();
+      current.add(id);
+      localStorage.setItem('nexo_radio_deleted_songs_v2', JSON.stringify(Array.from(current)));
+    } catch {}
+  }
+
+  public isGenericSong(s: Song): boolean {
+    if (!s) return false;
+    if (typeof s.id === 'string' && s.id.startsWith('song-')) return true;
+    const title = s.title?.trim().toLowerCase() || '';
+    const artist = s.artist?.trim().toLowerCase() || '';
+    if (
+      title === 'summer vibes' ||
+      title === 'flowers' ||
+      title === 'as it was' ||
+      title === 'calm down' ||
+      title === 'blinding lights' ||
+      title === 'levitating'
+    ) {
+      if (
+        artist.includes('calvin') ||
+        artist.includes('miley') ||
+        artist.includes('styles') ||
+        artist.includes('rema') ||
+        artist.includes('weeknd') ||
+        artist.includes('dua') ||
+        s.file_url === '/songs/summer.mp3' ||
+        s.file_url === '/songs/flowers.mp3'
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  public async deleteGenericSongs(): Promise<number> {
+    // Record known demo IDs into deleted set
+    for (let i = 1; i <= 6; i++) {
+      this.recordDeletedSongId(`song-${i}`);
+    }
+
+    const current = await this.getSongs(true);
+    const toDelete = current.filter((s) => this.isGenericSong(s));
+
+    for (const s of toDelete) {
+      this.recordDeletedSongId(s.id);
+      await this.deleteSong(s.id);
+    }
+
+    this.invalidateSongsCache();
+    this.invalidatePlaylistsCache();
+    this.postSync();
+    return toDelete.length;
+  }
+
   // --- SONGS ---
   public async getSongs(forceRefresh = false): Promise<Song[]> {
     if (!forceRefresh && this.cachedSongs && Date.now() - this.songsCacheTime < this.CACHE_TTL_MS) {
@@ -261,6 +331,7 @@ class RadioStore {
     }
 
     this.songsPromise = (async () => {
+      const deletedIds = this.getDeletedSongIds();
       let dbSongs: Song[] = [];
       if (isSupabaseConfigured && supabase) {
         try {
@@ -274,33 +345,43 @@ class RadioStore {
       }
 
       let localSongs: Song[] = [];
+      let hasLocal = false;
       if (typeof window !== 'undefined') {
         const saved = localStorage.getItem(SONGS_KEY);
-        if (saved) {
+        if (saved !== null) {
+          hasLocal = true;
           try {
             localSongs = JSON.parse(saved);
           } catch {}
         }
       }
 
-      // Merge: Put DB songs FIRST (they are the real production songs), then local, then demo songs
+      // Merge: DB songs first, then local songs (excluding anything marked as deleted)
       const songMap = new Map<string, Song>();
-      dbSongs.forEach((s) => songMap.set(s.id, s));
+      dbSongs.forEach((s) => {
+        if (!deletedIds.has(s.id)) songMap.set(s.id, s);
+      });
       localSongs.forEach((s) => {
-        if (!songMap.has(s.id)) songMap.set(s.id, s);
+        if (!deletedIds.has(s.id) && !songMap.has(s.id)) songMap.set(s.id, s);
       });
-      INITIAL_SONGS.forEach((s) => {
-        if (!songMap.has(s.id)) songMap.set(s.id, s);
-      });
+
+      // ONLY seed initial demo songs if completely brand new and never initialized or deleted
+      if (!hasLocal && dbSongs.length === 0 && deletedIds.size === 0) {
+        INITIAL_SONGS.forEach((s) => {
+          if (!deletedIds.has(s.id) && !songMap.has(s.id)) songMap.set(s.id, s);
+        });
+      }
 
       // Sort by created_at descending (newest uploads appear first at the top)
-      const result = Array.from(songMap.values()).sort((a, b) => {
-        const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return timeB - timeA;
-      });
+      const result = Array.from(songMap.values())
+        .filter((s) => !deletedIds.has(s.id))
+        .sort((a, b) => {
+          const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return timeB - timeA;
+        });
 
-      // Sanitize any dead or blocked external URLs (e.g. Pixabay) to local working MP3s
+      // Sanitize any dead or blocked external URLs to local working MP3s
       const sanitized = result.map((s, idx) => {
         let url = s.file_url;
         if (!url || url.includes('pixabay.com')) {
@@ -375,8 +456,11 @@ class RadioStore {
   }
 
   public async deleteSong(id: string): Promise<boolean> {
+    this.recordDeletedSongId(id);
     const current = await this.getSongs();
     const songToDelete = current.find((s) => s.id === id);
+
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
     if (isSupabaseConfigured && supabase) {
       try {
@@ -387,12 +471,15 @@ class RadioStore {
             await supabase.storage.from('songs').remove([rawFilename]);
           }
         }
-        await supabase.from('playlist_songs').delete().eq('song_id', id);
-        await supabase.from('songs').delete().eq('id', id);
+        if (isUUID) {
+          await supabase.from('playlist_songs').delete().eq('song_id', id);
+          await supabase.from('songs').delete().eq('id', id);
+        }
       } catch (e) {
         console.warn('Supabase deleteSong notice:', e);
       }
     }
+
     const updated = current.filter((s) => s.id !== id);
     if (typeof window !== 'undefined') {
       localStorage.setItem(SONGS_KEY, JSON.stringify(updated));
@@ -411,6 +498,38 @@ class RadioStore {
     });
     if (plChanged && typeof window !== 'undefined') {
       localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(playlists));
+    }
+
+    // Clean up queue
+    const queue = this.getQueue();
+    if (queue.some((s) => s.id === id)) {
+      this.setQueue(queue.filter((s) => s.id !== id));
+    }
+
+    // If current playing song in station state is the deleted one, update to next or idle
+    const state = this.getStationState();
+    if (state.current_song_id === id) {
+      if (updated.length > 0) {
+        this.updateStationState({
+          current_song_id: updated[0].id,
+          current_song_title: updated[0].title,
+          current_song_artist: updated[0].artist,
+          current_song_cover: updated[0].cover_url,
+          current_song_url: updated[0].file_url,
+          current_song_duration: updated[0].duration,
+          current_song_progress: 0,
+        });
+      } else {
+        this.updateStationState({
+          current_song_id: '',
+          current_song_title: 'Nexo Radio',
+          current_song_artist: 'En Vivo',
+          current_song_cover: '/cover_default.webp',
+          current_song_url: '',
+          current_song_duration: 0,
+          current_song_progress: 0,
+        });
+      }
     }
 
     this.invalidateSongsCache();
@@ -601,6 +720,15 @@ class RadioStore {
       if (result.length === 0) {
         result = [...INITIAL_PLAYLISTS];
       }
+
+      const deletedIds = this.getDeletedSongIds();
+      result.forEach((p) => {
+        if (p.songs && p.songs.length > 0) {
+          p.songs = p.songs.filter((s) => !deletedIds.has(s.id));
+          p.songs_count = p.songs.length;
+          p.duration_seconds = p.songs.reduce((acc, curr) => acc + (curr.duration || 0), 0);
+        }
+      });
 
       // Always ensure the Favoritas playlist is synchronized with all favorite songs
       const allSongs = await this.getSongs();
@@ -807,11 +935,15 @@ class RadioStore {
       const saved = localStorage.getItem(QUEUE_KEY);
       if (saved) {
         try {
-          return JSON.parse(saved);
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            const deleted = this.getDeletedSongIds();
+            return parsed.filter((s) => s && !deleted.has(s.id));
+          }
         } catch {}
       }
     }
-    return INITIAL_SONGS.slice(1);
+    return [];
   }
 
   public setQueue(queue: Song[]): void {

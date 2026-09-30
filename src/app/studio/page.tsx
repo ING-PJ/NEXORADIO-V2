@@ -101,11 +101,9 @@ export default function StudioDashboardPage() {
       setEngineState(audioEngine.getState());
       setQueue(radioStore.getQueue());
       setOnlineListeners(radioStore.getOnlineListeners());
+      radioStore.getSongs().then((s) => setAllSongs(s));
+      radioStore.getPlaylists().then((p) => setPlaylists(p));
     };
-
-    // Load catalog once on mount (cached in radioStore)
-    radioStore.getSongs().then((s) => setAllSongs(s));
-    radioStore.getPlaylists().then((p) => setPlaylists(p));
 
     const unsubStore = radioStore.subscribe(updateState);
     const unsubEngine = audioEngine.subscribe(() => {

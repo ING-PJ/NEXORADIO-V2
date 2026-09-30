@@ -1,6 +1,6 @@
 import { Song, Playlist, StationState, SongRequest } from './types';
 
-export const INITIAL_SONGS: Song[] = [
+export const GENERIC_DEMO_SONGS: Song[] = [
   {
     id: 'song-1',
     title: 'Summer Vibes',
@@ -87,15 +87,17 @@ export const INITIAL_SONGS: Song[] = [
   },
 ];
 
+export const INITIAL_SONGS: Song[] = [];
+
 export const INITIAL_PLAYLISTS: Playlist[] = [
   {
     id: 'playlist-1',
     name: 'Favoritas',
     description: 'Canciones más votadas por los oyentes y el equipo.',
     cover_url: '/cover_default.webp',
-    songs_count: 6,
-    duration_seconds: 1242,
-    songs: INITIAL_SONGS.filter(s => s.is_favorite),
+    songs_count: 0,
+    duration_seconds: 0,
+    songs: [],
     created_at: new Date().toISOString(),
   },
   {
@@ -103,9 +105,9 @@ export const INITIAL_PLAYLISTS: Playlist[] = [
     name: 'Éxitos del Momento',
     description: 'Los tracks más sonados en la programación diaria.',
     cover_url: '/cover_default.webp',
-    songs_count: 6,
-    duration_seconds: 1242,
-    songs: INITIAL_SONGS,
+    songs_count: 0,
+    duration_seconds: 0,
+    songs: [],
     created_at: new Date().toISOString(),
   },
   {
@@ -113,9 +115,9 @@ export const INITIAL_PLAYLISTS: Playlist[] = [
     name: 'NEXO Morning',
     description: 'Tu dosis de buena energía y buena música cada mañana.',
     cover_url: '/cover_default.webp',
-    songs_count: 4,
-    duration_seconds: 838,
-    songs: INITIAL_SONGS.slice(0, 4),
+    songs_count: 0,
+    duration_seconds: 0,
+    songs: [],
     created_at: new Date().toISOString(),
   },
 ];
@@ -154,12 +156,12 @@ export const INITIAL_STATION_STATE: StationState = {
   id: 'current',
   is_live: true,
   is_mic_active: false,
-  current_song_id: 'song-1',
-  current_song_title: 'Summer Vibes',
-  current_song_artist: 'Calvin Harris ft. NEXO',
+  current_song_id: '',
+  current_song_title: 'Nexo Radio',
+  current_song_artist: 'En Vivo',
   current_song_cover: '/cover_default.webp',
-  current_song_url: '/songs/summer.mp3',
-  current_song_duration: 232,
+  current_song_url: '',
+  current_song_duration: 0,
   current_song_progress: 0,
   listeners_count: 1,
   air_time_seconds: 0,
