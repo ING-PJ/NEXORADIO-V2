@@ -143,6 +143,14 @@ export function StudioChatHub({
     }
   }, [messages.length]);
 
+  useEffect(() => {
+    if (activeTab === 'chat') {
+      setTimeout(() => {
+        scrollToBottom(false);
+      }, 50);
+    }
+  }, [activeTab]);
+
   // Send message as official DJ
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
