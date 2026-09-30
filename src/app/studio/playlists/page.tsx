@@ -32,8 +32,6 @@ export default function StudioPlaylistsPage() {
 
   useEffect(() => {
     loadPlaylists();
-    const unsub = radioStore.subscribe(loadPlaylists);
-    return () => unsub();
   }, []);
 
   const loadPlaylists = async () => {

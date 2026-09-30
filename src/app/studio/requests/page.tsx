@@ -23,7 +23,9 @@ export default function StudioRequestsPage() {
 
   useEffect(() => {
     loadData();
-    const unsub = radioStore.subscribe(loadData);
+    const unsub = radioStore.subscribeToNewRequests(() => {
+      loadData();
+    });
     return () => unsub();
   }, []);
 

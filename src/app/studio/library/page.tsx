@@ -95,8 +95,6 @@ export default function StudioLibraryPage() {
 
   useEffect(() => {
     loadData();
-    const unsub = radioStore.subscribe(loadData);
-    return () => unsub();
   }, []);
 
   const loadData = async () => {

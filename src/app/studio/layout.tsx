@@ -87,26 +87,21 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
     }
   }, [isAuthenticated]);
 
-  // Verify authentication on all /studio routes except /studio/login
+  // Verify authentication once on initial mount (or if user is not authenticated yet)
   useEffect(() => {
     if (pathname === '/studio/login') {
       setIsCheckingAuth(false);
       return;
     }
 
-    const verifySession = async () => {
-      // 1. Check Supabase Auth session
-      if (isSupabaseConfigured && supabase) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session && session.user) {
-          setIsAuthenticated(true);
-          setUserEmail(session.user.email || 'Locutor');
-          setIsCheckingAuth(false);
-          return;
-        }
-      }
+    // Already authenticated: never block or slow down internal menu navigation
+    if (isAuthenticated) {
+      setIsCheckingAuth(false);
+      return;
+    }
 
-      // 2. Check local fallback session
+    const verifySession = async () => {
+      // 1. Check local session first (instant, 0ms)
       if (typeof window !== 'undefined') {
         const local = localStorage.getItem('nexo_studio_session');
         if (local) {
@@ -120,6 +115,19 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
         }
       }
 
+      // 2. Check Supabase Auth session if local wasn't found
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session && session.user) {
+            setIsAuthenticated(true);
+            setUserEmail(session.user.email || 'Locutor');
+            setIsCheckingAuth(false);
+            return;
+          }
+        } catch {}
+      }
+
       // 3. Not authenticated -> Redirect to login page
       setIsAuthenticated(false);
       setIsCheckingAuth(false);
@@ -127,7 +135,7 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
     };
 
     verifySession();
-  }, [pathname, router]);
+  }, [pathname, router, isAuthenticated]);
 
   // If on login page, don't show the dashboard shell
   if (pathname === '/studio/login') {
