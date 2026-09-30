@@ -19,6 +19,7 @@ import {
 import PublicPlayer from '@/components/public/PublicPlayer';
 import RequestModal from '@/components/public/RequestModal';
 import { LiveChatView, LiveChatDrawer } from '@/components/public/LiveChat';
+import { SupportModal } from '@/components/public/SupportModal';
 import { radioStore } from '@/lib/radioStore';
 import { chatStore } from '@/lib/chatStore';
 import { Song, StationState } from '@/lib/types';
@@ -27,6 +28,7 @@ export default function NexoRadioPublicPage() {
   const [stationState, setStationState] = useState<StationState>(radioStore.getStationState());
   const [recentSongs, setRecentSongs] = useState<Song[]>([]);
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
@@ -108,12 +110,36 @@ export default function NexoRadioPublicPage() {
                 )}
               </button>
 
-              <button
-                onClick={() => {}}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-all"
+              {/* Discord Link */}
+              <a
+                href="https://discord.gg/9AksstuAC"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-medium text-sm text-gray-400 hover:text-white hover:bg-[#5865F2]/15 hover:border-[#5865F2]/30 border border-transparent transition-all group"
               >
-                <Users className="w-5 h-5" />
-                Comunidad
+                <div className="flex items-center gap-3">
+                  <svg className="w-5 h-5 text-[#5865F2] fill-current group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
+                    <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+                  </svg>
+                  <span>Discord</span>
+                </div>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#5865F2]/20 text-[#5865F2] border border-[#5865F2]/30">
+                  Unirse
+                </span>
+              </a>
+
+              {/* Apoyar la Radio Button */}
+              <button
+                onClick={() => setIsSupportModalOpen(true)}
+                className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-medium text-sm text-gray-400 hover:text-white hover:bg-rose-500/10 hover:border-rose-500/30 border border-transparent transition-all group"
+              >
+                <div className="flex items-center gap-3">
+                  <Heart className="w-5 h-5 text-rose-400 fill-rose-500/20 group-hover:fill-rose-500 transition-colors" />
+                  <span>Apoyar la radio</span>
+                </div>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                  Donar
+                </span>
               </button>
             </nav>
           </div>
@@ -184,22 +210,46 @@ export default function NexoRadioPublicPage() {
             </div>
 
             {/* Right Top Header Actions */}
-            <div className="flex items-center gap-3 sm:gap-4">
+            <div className="flex items-center gap-2 sm:gap-3">
               {/* Listener counter pill */}
-              <div className="hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-gray-300">
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-gray-300">
                 <Users className="w-3.5 h-3.5 text-[#e5b45f]" />
                 <span>
-                  <strong className="text-white font-semibold">{stationState.listeners_count.toLocaleString()}</strong> {stationState.listeners_count === 1 ? 'oyente ahora' : 'oyentes ahora'}
+                  <strong className="text-white font-semibold">{stationState.listeners_count.toLocaleString()}</strong> {stationState.listeners_count === 1 ? 'oyente' : 'oyentes'}
                 </span>
               </div>
+
+              {/* Discord Button */}
+              <a
+                href="https://discord.gg/9AksstuAC"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold text-white bg-[#5865F2] hover:bg-[#4752c4] shadow-md shadow-[#5865F2]/25 transition-all transform active:scale-95 shrink-0"
+                title="Únete a nuestro servidor oficial de Discord"
+              >
+                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                  <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+                </svg>
+                <span className="hidden sm:inline">Discord</span>
+              </a>
+
+              {/* Apoyar la Radio Button */}
+              <button
+                onClick={() => setIsSupportModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold text-rose-300 hover:text-white bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-all transform active:scale-95 shrink-0 shadow-sm"
+                title="Apoyar a NEXO Radio"
+              >
+                <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-400" />
+                <span className="hidden sm:inline">Apoyar</span>
+              </button>
 
               {/* Pedir una canción button */}
               <button
                 onClick={() => setIsRequestModalOpen(true)}
-                className="flex items-center gap-2 px-4 sm:px-5 py-2 rounded-full text-xs sm:text-sm font-semibold text-black bg-gradient-to-r from-[#e5b45f] to-[#f3c87a] hover:from-[#f3c87a] hover:to-[#e5b45f] shadow-lg shadow-[#e5b45f]/25 transition-all transform active:scale-95"
+                className="flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-full text-xs font-semibold text-black bg-gradient-to-r from-[#e5b45f] to-[#f3c87a] hover:from-[#f3c87a] hover:to-[#e5b45f] shadow-lg shadow-[#e5b45f]/25 transition-all transform active:scale-95 shrink-0"
               >
-                <Music className="w-4 h-4 fill-current" />
-                <span>Pedir una canción</span>
+                <Music className="w-3.5 h-3.5 fill-current" />
+                <span>Pedir canción</span>
               </button>
             </div>
           </header>
@@ -247,6 +297,25 @@ export default function NexoRadioPublicPage() {
               >
                 <Music className="w-4 h-4 text-[#e5b45f]" />
                 Pedir una canción
+              </button>
+              <a
+                href="https://discord.gg/9AksstuAC"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl font-semibold text-sm text-[#5865F2] bg-[#5865F2]/10 border border-[#5865F2]/20"
+              >
+                <span>Unirse a Discord</span>
+                <ExternalLink className="w-4 h-4" />
+              </a>
+              <button
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  setIsSupportModalOpen(true);
+                }}
+                className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl font-semibold text-sm text-rose-300 bg-rose-500/10 border border-rose-500/20"
+              >
+                <span>Apoyar la radio</span>
+                <Heart className="w-4 h-4 fill-rose-500 text-rose-400" />
               </button>
               <Link
                 href="/studio/login"
@@ -412,9 +481,23 @@ export default function NexoRadioPublicPage() {
               </div>
               <span className="text-[10px] font-medium">Chat</span>
             </button>
-            <button className="flex flex-col items-center gap-1 text-gray-400">
-              <Users className="w-5 h-5" />
-              <span className="text-[10px] font-medium">Comunidad</span>
+            <a
+              href="https://discord.gg/9AksstuAC"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-col items-center gap-1 text-gray-400 hover:text-[#5865F2] transition-colors"
+            >
+              <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+              </svg>
+              <span className="text-[10px] font-medium">Discord</span>
+            </a>
+            <button
+              onClick={() => setIsSupportModalOpen(true)}
+              className="flex flex-col items-center gap-1 text-rose-400 hover:text-rose-300 transition-colors"
+            >
+              <Heart className="w-5 h-5 fill-current" />
+              <span className="text-[10px] font-medium">Apoyar</span>
             </button>
           </nav>
         </div>
@@ -430,6 +513,12 @@ export default function NexoRadioPublicPage() {
       <RequestModal
         isOpen={isRequestModalOpen}
         onClose={() => setIsRequestModalOpen(false)}
+      />
+
+      {/* Support / Donation Modal */}
+      <SupportModal
+        isOpen={isSupportModalOpen}
+        onClose={() => setIsSupportModalOpen(false)}
       />
     </div>
   );
