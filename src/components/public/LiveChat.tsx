@@ -14,6 +14,7 @@ import {
   ArrowDown,
 } from 'lucide-react';
 import { chatStore } from '@/lib/chatStore';
+import { soundEffects } from '@/lib/soundEffects';
 import { ChatMessage } from '@/lib/types';
 
 interface LiveChatViewProps {
@@ -47,7 +48,14 @@ export function LiveChatView({ isDj = false, onClose, isCompact = false }: LiveC
       setMessages(chatStore.getMessages());
     });
 
-    return () => unsubscribe();
+    const unsubIncoming = chatStore.subscribeIncoming(() => {
+      soundEffects.playChatSound(false);
+    });
+
+    return () => {
+      unsubscribe();
+      unsubIncoming();
+    };
   }, []);
 
   // Monitor user scroll position to avoid snapping while reading previous messages

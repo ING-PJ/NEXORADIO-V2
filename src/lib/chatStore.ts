@@ -54,6 +54,7 @@ const DEFAULT_MESSAGES: ChatMessage[] = [
 class ChatStore {
   private messages: ChatMessage[] = [];
   private listeners: Set<() => void> = new Set();
+  private incomingListeners: Set<(msg: ChatMessage) => void> = new Set();
   private channel: RealtimeChannel | null = null;
   private localBc: BroadcastChannel | null = null;
   private initialized = false;
@@ -247,9 +248,27 @@ class ChatStore {
 
     if (!isLocalSender) {
       this.unreadCount++;
+      this.notifyIncoming(msg);
     }
 
     this.notify();
+  }
+
+  public subscribeIncoming(listener: (msg: ChatMessage) => void): () => void {
+    this.incomingListeners.add(listener);
+    return () => {
+      this.incomingListeners.delete(listener);
+    };
+  }
+
+  private notifyIncoming(msg: ChatMessage) {
+    this.incomingListeners.forEach((listener) => {
+      try {
+        listener(msg);
+      } catch (e) {
+        console.error('ChatStore incoming listener error:', e);
+      }
+    });
   }
 
   public getMessages(): ChatMessage[] {

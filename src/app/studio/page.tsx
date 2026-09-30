@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { audioEngine } from '@/lib/audioEngine';
 import { radioStore } from '@/lib/radioStore';
-import { LiveChatView } from '@/components/public/LiveChat';
+import { StudioChatHub } from '@/components/studio/StudioChatHub';
 import { MicrophoneSettingsModal } from '@/components/studio/MicrophoneSettingsModal';
 import { Song, StationState, AudioLevels, Playlist } from '@/lib/types';
 
@@ -41,7 +41,7 @@ export default function StudioDashboardPage() {
   const [allSongs, setAllSongs] = useState<Song[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [searchLibrary, setSearchLibrary] = useState('');
-  const [activeTab, setActiveTab] = useState<'biblioteca' | 'playlists' | 'chat'>('biblioteca');
+  const [activeTab, setActiveTab] = useState<'biblioteca' | 'playlists'>('biblioteca');
   const [micError, setMicError] = useState('');
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [isMicModalOpen, setIsMicModalOpen] = useState(false);
@@ -441,129 +441,123 @@ export default function StudioDashboardPage() {
       </div>
 
       {/* ========================================================= */}
-      {/* MIDDLE SECTION: QUEUE & MINI LIBRARY */}
+      {/* MIDDLE SECTION: QUEUE & LIBRARY (COL-7) + CABINA CHAT & REQUESTS HUB (COL-5) */}
       {/* ========================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* QUEUE CARD */}
-        <div className="lg:col-span-6 rounded-3xl glass-panel p-6 border border-white/5 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between pb-3 border-b border-white/5">
-              <h3 className="text-sm font-bold text-white">Siguiente en la cola</h3>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => radioStore.setQueue([])}
-                  className="text-xs text-gray-400 hover:text-rose-400 flex items-center gap-1 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Limpiar
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-2 max-h-72 overflow-y-auto pr-1">
-              {queue.length === 0 ? (
-                <div className="py-8 text-center text-xs text-gray-500">
-                  La cola está vacía. Añade canciones desde la biblioteca.
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        {/* LEFT COLUMN: QUEUE & MUSIC LIBRARY */}
+        <div className="lg:col-span-7 flex flex-col gap-6">
+          {/* QUEUE CARD */}
+          <div className="rounded-3xl glass-panel p-6 border border-white/5 flex flex-col justify-between flex-1">
+            <div>
+              <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-white">Siguiente en la cola</h3>
+                  <span className="text-[10px] font-mono text-[#e5b45f] bg-[#e5b45f]/10 border border-[#e5b45f]/20 px-2 py-0.5 rounded-full">
+                    {queue.length} {queue.length === 1 ? 'pista' : 'pistas'}
+                  </span>
                 </div>
-              ) : (
-                queue.map((song, idx) => (
-                  <div
-                    key={`${song.id}-${idx}`}
-                    className="flex items-center justify-between p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 transition-all group"
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => radioStore.setQueue([])}
+                    className="text-xs text-gray-400 hover:text-rose-400 flex items-center gap-1 transition-colors"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className="text-xs font-mono text-gray-500 w-4">{idx + 1}</span>
-                      <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 bg-neutral-900">
-                        <img
-                          src={song.cover_url || '/cover_default.webp'}
-                          alt={song.title}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).src = '/cover_default.webp';
-                          }}
-                        />
-                      </div>
-                      <div className="min-w-0">
-                        <h4 className="text-xs font-semibold text-white truncate">{song.title}</h4>
-                        <p className="text-[11px] text-gray-400 truncate">{song.artist}</p>
-                      </div>
-                    </div>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Limpiar
+                  </button>
+                </div>
+              </div>
 
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-gray-400 font-mono">
-                        {formatTime(song.duration)}
-                      </span>
-                      <button
-                        onClick={() => handlePlaySong(song)}
-                        className="p-1.5 rounded-lg bg-[#e5b45f] text-black hover:bg-[#f3c87a] transition-all opacity-80 group-hover:opacity-100"
-                        title="Reproducir ahora"
-                      >
-                        <Play className="w-3.5 h-3.5 fill-current" />
-                      </button>
-                      <button
-                        onClick={() => radioStore.removeFromQueue(idx)}
-                        className="p-1.5 text-gray-500 hover:text-rose-400 transition-colors"
-                        title="Quitar de cola"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+              <div className="mt-4 space-y-2 max-h-60 overflow-y-auto pr-1">
+                {queue.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-gray-500">
+                    La cola está vacía. Añade canciones desde la biblioteca o desde las solicitudes.
                   </div>
-                ))
-              )}
+                ) : (
+                  queue.map((song, idx) => (
+                    <div
+                      key={`${song.id}-${idx}`}
+                      className="flex items-center justify-between p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 transition-all group"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="text-xs font-mono text-gray-500 w-4">{idx + 1}</span>
+                        <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 bg-neutral-900">
+                          <img
+                            src={song.cover_url || '/cover_default.webp'}
+                            alt={song.title}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = '/cover_default.webp';
+                            }}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="text-xs font-semibold text-white truncate">{song.title}</h4>
+                          <p className="text-[11px] text-gray-400 truncate">{song.artist}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-gray-400 font-mono">
+                          {formatTime(song.duration)}
+                        </span>
+                        <button
+                          onClick={() => handlePlaySong(song)}
+                          className="p-1.5 rounded-lg bg-[#e5b45f] text-black hover:bg-[#f3c87a] transition-all opacity-80 group-hover:opacity-100"
+                          title="Reproducir ahora"
+                        >
+                          <Play className="w-3.5 h-3.5 fill-current" />
+                        </button>
+                        <button
+                          onClick={() => radioStore.removeFromQueue(idx)}
+                          className="p-1.5 text-gray-500 hover:text-rose-400 transition-colors"
+                          title="Quitar de cola"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-white/5 flex items-center justify-between mt-3">
+              <Link
+                href="/studio/library"
+                className="text-xs text-[#e5b45f] font-semibold hover:underline flex items-center gap-1"
+              >
+                <Plus className="w-3.5 h-3.5" /> Explorar biblioteca completa
+              </Link>
             </div>
           </div>
 
-          <div className="pt-4 border-t border-white/5 flex items-center justify-between">
-            <Link
-              href="/studio/library"
-              className="text-xs text-[#e5b45f] font-semibold hover:underline flex items-center gap-1"
-            >
-              <Plus className="w-3.5 h-3.5" /> Agregar más canciones
-            </Link>
-          </div>
-        </div>
+          {/* QUICK LIBRARY & PLAYLISTS CARD */}
+          <div className="rounded-3xl glass-panel p-6 border border-white/5 flex flex-col justify-between flex-1">
+            <div>
+              <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => setActiveTab('biblioteca')}
+                    className={`text-xs font-bold transition-colors pb-1 border-b-2 ${
+                      activeTab === 'biblioteca'
+                        ? 'text-white border-[#e5b45f]'
+                        : 'text-gray-400 border-transparent hover:text-white'
+                    }`}
+                  >
+                    Biblioteca rápida
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('playlists')}
+                    className={`text-xs font-bold transition-colors pb-1 border-b-2 ${
+                      activeTab === 'playlists'
+                        ? 'text-white border-[#e5b45f]'
+                        : 'text-gray-400 border-transparent hover:text-white'
+                    }`}
+                  >
+                    Playlists
+                  </button>
+                </div>
 
-        {/* QUICK LIBRARY EXPLORER */}
-        <div className="lg:col-span-6 rounded-3xl glass-panel p-6 border border-white/5 flex flex-col justify-between">
-          <div>
-            {/* Tabs */}
-            <div className="flex items-center justify-between pb-3 border-b border-white/5">
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={() => setActiveTab('biblioteca')}
-                  className={`text-xs font-bold transition-colors pb-1 border-b-2 ${
-                    activeTab === 'biblioteca'
-                      ? 'text-white border-[#e5b45f]'
-                      : 'text-gray-400 border-transparent hover:text-white'
-                  }`}
-                >
-                  Biblioteca
-                </button>
-                <button
-                  onClick={() => setActiveTab('playlists')}
-                  className={`text-xs font-bold transition-colors pb-1 border-b-2 ${
-                    activeTab === 'playlists'
-                      ? 'text-white border-[#e5b45f]'
-                      : 'text-gray-400 border-transparent hover:text-white'
-                  }`}
-                >
-                  Playlists
-                </button>
-                <button
-                  onClick={() => setActiveTab('chat')}
-                  className={`text-xs font-bold transition-colors pb-1 border-b-2 flex items-center gap-1.5 ${
-                    activeTab === 'chat'
-                      ? 'text-white border-[#e5b45f]'
-                      : 'text-gray-400 border-transparent hover:text-white'
-                  }`}
-                >
-                  <MessageSquare className="w-3.5 h-3.5 text-[#e5b45f]" />
-                  Chat en vivo
-                </button>
-              </div>
-
-              {activeTab !== 'chat' ? (
                 <div className="relative w-48">
                   <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
                   <input
@@ -574,95 +568,94 @@ export default function StudioDashboardPage() {
                     className="w-full pl-7 pr-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#e5b45f]"
                   />
                 </div>
-              ) : (
-                <div className="flex items-center gap-1.5 text-[11px] text-[#e5b45f] font-semibold bg-[#e5b45f]/10 border border-[#e5b45f]/30 px-2.5 py-1 rounded-full">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Modo DJ Oficial
-                </div>
-              )}
-            </div>
+              </div>
 
-            {/* List / Chat Tab Content */}
-            <div className="mt-4 space-y-2 max-h-72 overflow-y-auto pr-1">
-              {activeTab === 'chat' ? (
-                <div className="h-72 rounded-2xl overflow-hidden border border-white/10">
-                  <LiveChatView isDj={true} isCompact />
-                </div>
-              ) : activeTab === 'biblioteca' ? (
-                filteredSongs.map((song) => (
-                  <div
-                    key={song.id}
-                    className="flex items-center justify-between p-2 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 transition-all"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-9 h-9 rounded-xl overflow-hidden shrink-0 bg-neutral-900">
-                        <img
-                          src={song.cover_url || '/cover_default.webp'}
-                          alt={song.title}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).src = '/cover_default.webp';
-                          }}
-                        />
-                      </div>
-                      <div className="min-w-0">
-                        <h4 className="text-xs font-semibold text-white truncate">{song.title}</h4>
-                        <p className="text-[11px] text-gray-400 truncate">{song.artist}</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-gray-400 font-mono">
-                        {formatTime(song.duration)}
-                      </span>
-                      <button
-                        onClick={() => radioStore.addToQueue(song)}
-                        className="p-1.5 rounded-lg bg-white/10 text-white hover:bg-[#e5b45f] hover:text-black transition-all"
-                        title="Agregar a la cola"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handlePlaySong(song)}
-                        className="p-1.5 rounded-lg bg-[#e5b45f]/20 text-[#e5b45f] hover:bg-[#e5b45f] hover:text-black transition-all"
-                        title="Reproducir de inmediato"
-                      >
-                        <Play className="w-3.5 h-3.5 fill-current" />
-                      </button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                playlists.map((pl) => (
-                  <div
-                    key={pl.id}
-                    className="flex items-center justify-between p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 transition-all"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 bg-neutral-800">
-                        <img src={pl.cover_url || '/cover_default.webp'} alt={pl.name} className="w-full h-full object-cover" />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-semibold text-white">{pl.name}</h4>
-                        <p className="text-[10px] text-gray-400">{pl.songs_count || 0} canciones</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (pl.songs && pl.songs.length > 0) {
-                          audioEngine.playSong(pl.songs[0]);
-                          radioStore.setQueue(pl.songs.slice(1));
-                        }
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-[#e5b45f] text-black text-xs font-semibold hover:bg-[#f3c87a] transition-all"
+              {/* List Content */}
+              <div className="mt-4 space-y-2 max-h-60 overflow-y-auto pr-1">
+                {activeTab === 'biblioteca' ? (
+                  filteredSongs.map((song) => (
+                    <div
+                      key={song.id}
+                      className="flex items-center justify-between p-2 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 transition-all"
                     >
-                      Cargar playlist
-                    </button>
-                  </div>
-                ))
-              )}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-xl overflow-hidden shrink-0 bg-neutral-900">
+                          <img
+                            src={song.cover_url || '/cover_default.webp'}
+                            alt={song.title}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = '/cover_default.webp';
+                            }}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="text-xs font-semibold text-white truncate">{song.title}</h4>
+                          <p className="text-[11px] text-gray-400 truncate">{song.artist}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-gray-400 font-mono">
+                          {formatTime(song.duration)}
+                        </span>
+                        <button
+                          onClick={() => radioStore.addToQueue(song)}
+                          className="p-1.5 rounded-lg bg-white/10 text-white hover:bg-[#e5b45f] hover:text-black transition-all"
+                          title="Agregar a la cola"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handlePlaySong(song)}
+                          className="p-1.5 rounded-lg bg-[#e5b45f]/20 text-[#e5b45f] hover:bg-[#e5b45f] hover:text-black transition-all"
+                          title="Reproducir de inmediato"
+                        >
+                          <Play className="w-3.5 h-3.5 fill-current" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  playlists.map((pl) => (
+                    <div
+                      key={pl.id}
+                      className="flex items-center justify-between p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 transition-all"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 bg-neutral-800">
+                          <img src={pl.cover_url || '/cover_default.webp'} alt={pl.name} className="w-full h-full object-cover" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-semibold text-white">{pl.name}</h4>
+                          <p className="text-[10px] text-gray-400">{pl.songs_count || 0} canciones</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (pl.songs && pl.songs.length > 0) {
+                            audioEngine.playSong(pl.songs[0]);
+                            radioStore.setQueue(pl.songs.slice(1));
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-[#e5b45f] text-black text-xs font-semibold hover:bg-[#f3c87a] transition-all"
+                      >
+                        Cargar playlist
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
+        </div>
+
+        {/* RIGHT COLUMN: DEDICATED CABINA CHAT & REQUESTS HUB */}
+        <div className="lg:col-span-5 flex flex-col">
+          <StudioChatHub
+            allSongs={allSongs}
+            className="h-full min-h-[580px]"
+          />
         </div>
       </div>
 

@@ -11,6 +11,7 @@ const QUEUE_KEY = 'nexo_radio_queue_v1';
 class RadioStore {
   private broadcastChannel: BroadcastChannel | null = null;
   private listeners: Set<() => void> = new Set();
+  private requestListeners: Set<(req: SongRequest) => void> = new Set();
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -18,6 +19,9 @@ class RadioStore {
         this.broadcastChannel = new BroadcastChannel('nexo_radio_sync_channel');
         this.broadcastChannel.onmessage = (event) => {
           if (event.data?.type === 'STATE_CHANGED') {
+            this.notify();
+          } else if (event.data?.type === 'NEW_REQUEST' && event.data.payload) {
+            this.notifyNewRequest(event.data.payload);
             this.notify();
           }
         };
@@ -69,7 +73,10 @@ class RadioStore {
           .on(
             'postgres_changes',
             { event: '*', schema: 'public', table: 'song_requests' },
-            () => {
+            (payload) => {
+              if (payload.eventType === 'INSERT' && payload.new) {
+                this.notifyNewRequest(payload.new as SongRequest);
+              }
               this.notify();
             }
           )
@@ -101,6 +108,23 @@ class RadioStore {
     return () => {
       this.listeners.delete(callback);
     };
+  }
+
+  public subscribeToNewRequests(listener: (req: SongRequest) => void): () => void {
+    this.requestListeners.add(listener);
+    return () => {
+      this.requestListeners.delete(listener);
+    };
+  }
+
+  private notifyNewRequest(req: SongRequest) {
+    this.requestListeners.forEach((cb) => {
+      try {
+        cb(req);
+      } catch (err) {
+        console.error('RadioStore request listener error:', err);
+      }
+    });
   }
 
   private notify() {
@@ -693,6 +717,12 @@ class RadioStore {
           if (typeof window !== 'undefined') {
             localStorage.setItem(REQUESTS_KEY, JSON.stringify(updated));
           }
+          if (this.broadcastChannel) {
+            try {
+              this.broadcastChannel.postMessage({ type: 'NEW_REQUEST', payload: created });
+            } catch {}
+          }
+          this.notifyNewRequest(created);
           this.postSync();
           return created;
         } else if (error) {
@@ -713,6 +743,12 @@ class RadioStore {
     if (typeof window !== 'undefined') {
       localStorage.setItem(REQUESTS_KEY, JSON.stringify(updated));
     }
+    if (this.broadcastChannel) {
+      try {
+        this.broadcastChannel.postMessage({ type: 'NEW_REQUEST', payload: fallbackReq });
+      } catch {}
+    }
+    this.notifyNewRequest(fallbackReq);
     this.postSync();
     return fallbackReq;
   }
