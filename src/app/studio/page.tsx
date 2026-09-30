@@ -469,7 +469,7 @@ export default function StudioDashboardPage() {
                 </div>
               </div>
 
-              <div className="mt-4 space-y-2 max-h-60 overflow-y-auto pr-1">
+              <div className="mt-4 space-y-2 max-h-96 overflow-y-auto pr-1">
                 {queue.length === 0 ? (
                   <div className="py-8 text-center text-xs text-gray-500">
                     La cola está vacía. Añade canciones desde la biblioteca o desde las solicitudes.
@@ -573,7 +573,7 @@ export default function StudioDashboardPage() {
               </div>
 
               {/* List Content */}
-              <div className="mt-4 space-y-2 max-h-60 overflow-y-auto pr-1">
+              <div className="mt-4 space-y-2 max-h-96 overflow-y-auto pr-1">
                 {activeTab === 'biblioteca' ? (
                   filteredSongs.map((song) => (
                     <div
