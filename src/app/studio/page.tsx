@@ -654,7 +654,7 @@ export default function StudioDashboardPage() {
         <div className="lg:col-span-5 flex flex-col">
           <StudioChatHub
             allSongs={allSongs}
-            className="h-full min-h-[580px]"
+            className="h-full min-h-[720px]"
           />
         </div>
       </div>
