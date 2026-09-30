@@ -1,6 +1,7 @@
 import { Song, Playlist, SongRequest, StationState } from './types';
 import { INITIAL_SONGS, INITIAL_PLAYLISTS, INITIAL_REQUESTS, INITIAL_STATION_STATE } from './mockData';
 import { supabase, isSupabaseConfigured } from './supabase';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 const SONGS_KEY = 'nexo_radio_songs_v2';
 const PLAYLISTS_KEY = 'nexo_radio_playlists_v1';
@@ -10,6 +11,7 @@ const QUEUE_KEY = 'nexo_radio_queue_v1';
 
 class RadioStore {
   private broadcastChannel: BroadcastChannel | null = null;
+  private realtimeChannel: RealtimeChannel | null = null;
   private listeners: Set<() => void> = new Set();
   private requestListeners: Set<(req: SongRequest) => void> = new Set();
 
@@ -76,8 +78,20 @@ class RadioStore {
           });
 
         // Listen for live station updates, incoming requests, and active presence
-        const channel = supabase.channel('nexo_global_realtime');
-        channel
+        this.realtimeChannel = supabase.channel('nexo_global_realtime');
+        this.realtimeChannel
+          .on(
+            'broadcast',
+            { event: 'station_state' },
+            ({ payload }) => {
+              if (payload) {
+                const current = this.getStationState();
+                const merged = { ...current, ...payload };
+                localStorage.setItem(STATE_KEY, JSON.stringify(merged));
+                this.notify();
+              }
+            }
+          )
           .on(
             'postgres_changes',
             { event: '*', schema: 'public', table: 'station_state' },
@@ -111,13 +125,15 @@ class RadioStore {
             }
           )
           .on('presence', { event: 'sync' }, () => {
-            const presenceState = channel.presenceState();
-            const count = Object.keys(presenceState).length;
-            this.setListenersCount(count);
+            if (this.realtimeChannel) {
+              const presenceState = this.realtimeChannel.presenceState();
+              const count = Object.keys(presenceState).length;
+              this.setListenersCount(count);
+            }
           })
           .subscribe(async (status) => {
-            if (status === 'SUBSCRIBED') {
-              await channel.track({
+            if (status === 'SUBSCRIBED' && this.realtimeChannel) {
+              await this.realtimeChannel.track({
                 joined_at: new Date().toISOString(),
               });
             }
@@ -916,34 +932,50 @@ class RadioStore {
       (partial.current_song_url !== undefined && partial.current_song_url !== current.current_song_url) ||
       (partial.current_song_duration !== undefined && partial.current_song_duration !== current.current_song_duration);
 
-    if (hasSignificantChange && isSupabaseConfigured && supabase) {
-      const isUuid = (str?: string | null) =>
-        Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+    if (hasSignificantChange) {
+      // 1. Instant WebSocket broadcast directly to all connected listeners (sub-second sync)
+      if (this.realtimeChannel) {
+        try {
+          this.realtimeChannel.send({
+            type: 'broadcast',
+            event: 'station_state',
+            payload: updated,
+          });
+        } catch (e) {
+          console.warn('Realtime station_state broadcast notice:', e);
+        }
+      }
 
-      const payload: any = {
-        id: 'current',
-        is_live: updated.is_live ?? true,
-        is_mic_active: updated.is_mic_active ?? false,
-        current_song_id: isUuid(updated.current_song_id) ? updated.current_song_id : null,
-        current_song_title: updated.current_song_title || 'Summer Vibes',
-        current_song_artist: updated.current_song_artist || 'Calvin Harris ft. NEXO',
-        current_song_cover: updated.current_song_cover || '/cover_default.webp',
-        current_song_url: updated.current_song_url || '/songs/summer.mp3',
-        current_song_duration: updated.current_song_duration || 0,
-        current_song_progress: 0,
-        listeners_count: updated.listeners_count || 1,
-        air_time_seconds: updated.air_time_seconds || 0,
-        updated_at: new Date().toISOString(),
-      };
+      // 2. Persist to Supabase database for listeners who join later
+      if (isSupabaseConfigured && supabase) {
+        const isUuid = (str?: string | null) =>
+          Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
 
-      supabase
-        .from('station_state')
-        .upsert(payload, { onConflict: 'id' })
-        .then(({ error }) => {
-          if (error) {
-            console.warn('Supabase station_state sync notice:', error.message);
-          }
-        });
+        const payload: any = {
+          id: 'current',
+          is_live: updated.is_live ?? true,
+          is_mic_active: updated.is_mic_active ?? false,
+          current_song_id: isUuid(updated.current_song_id) ? updated.current_song_id : null,
+          current_song_title: updated.current_song_title || 'Summer Vibes',
+          current_song_artist: updated.current_song_artist || 'Calvin Harris ft. NEXO',
+          current_song_cover: updated.current_song_cover || '/cover_default.webp',
+          current_song_url: updated.current_song_url || '/songs/summer.mp3',
+          current_song_duration: updated.current_song_duration || 0,
+          current_song_progress: 0,
+          listeners_count: updated.listeners_count || 1,
+          air_time_seconds: updated.air_time_seconds || 0,
+          updated_at: new Date().toISOString(),
+        };
+
+        supabase
+          .from('station_state')
+          .upsert(payload, { onConflict: 'id' })
+          .then(({ error }) => {
+            if (error) {
+              console.warn('Supabase station_state sync notice:', error.message);
+            }
+          });
+      }
     }
 
     this.postSync();
