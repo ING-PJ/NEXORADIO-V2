@@ -239,26 +239,26 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
   };
 
   return (
-    <div className="relative flex flex-col items-center justify-center w-full max-w-2xl mx-auto px-4 py-6">
+    <div className="relative flex flex-col items-center justify-center w-full max-w-2xl mx-auto px-4 py-1 sm:py-2">
       {/* Vinyl Aura & Rotating Center Disc */}
-      <div className="relative flex items-center justify-center my-4 sm:my-6 group">
+      <div className="relative flex items-center justify-center my-2 sm:my-3 group">
         {/* Radial Dotted Audio Glow Ring */}
-        <div className={`absolute w-72 h-72 sm:w-96 sm:h-96 rounded-full border border-dashed border-[#e5b45f]/25 transition-all duration-1000 ${
+        <div className={`absolute w-60 h-60 sm:w-72 sm:h-72 lg:w-80 lg:h-80 rounded-full border border-dashed border-[#e5b45f]/25 transition-all duration-1000 ${
           isPlaying ? 'animate-pulse-gold scale-105' : 'opacity-30 scale-95'
         }`} />
 
         {/* Ambient Warm Golden Aura */}
-        <div className={`absolute w-64 h-64 sm:w-80 sm:h-80 rounded-full bg-[#e5b45f]/15 blur-2xl transition-opacity duration-700 ${
+        <div className={`absolute w-52 h-52 sm:w-64 sm:h-64 lg:w-72 lg:h-72 rounded-full bg-[#e5b45f]/15 blur-2xl transition-opacity duration-700 ${
           isPlaying ? 'opacity-100' : 'opacity-20'
         }`} />
 
         {/* Dotted Accent Ring */}
-        <div className="absolute w-[240px] h-[240px] sm:w-[310px] sm:h-[310px] rounded-full border border-[#e5b45f]/30 flex items-center justify-center">
+        <div className="absolute w-[200px] h-[200px] sm:w-[250px] sm:h-[250px] lg:w-[270px] lg:h-[270px] rounded-full border border-[#e5b45f]/30 flex items-center justify-center">
           <div className="w-full h-full rounded-full border border-dotted border-[#e5b45f]/40 animate-spin-slow" />
         </div>
 
         {/* Outer Golden Border Rim */}
-        <div className="relative w-52 h-52 sm:w-72 sm:h-72 rounded-full p-1.5 bg-gradient-to-tr from-[#d9a149] via-[#f3c87a] to-[#966b26] shadow-2xl shadow-[#e5b45f]/30">
+        <div className="relative w-44 h-44 sm:w-56 sm:h-56 lg:w-64 lg:h-64 rounded-full p-1.5 bg-gradient-to-tr from-[#d9a149] via-[#f3c87a] to-[#966b26] shadow-2xl shadow-[#e5b45f]/30">
           {/* Inner Disc / Cover Art Container */}
           <div className={`w-full h-full rounded-full overflow-hidden relative shadow-inner bg-black ${
             isPlaying ? 'animate-spin-slow' : ''
@@ -275,16 +275,16 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
 
             {/* Center vinyl spindle */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-neutral-800 to-black border-2 border-[#e5b45f]/60 shadow-lg flex items-center justify-center">
-              <div className="w-2.5 h-2.5 rounded-full bg-[#e5b45f]" />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-gradient-to-br from-neutral-800 to-black border-2 border-[#e5b45f]/60 shadow-lg flex items-center justify-center">
+              <div className="w-2 h-2 rounded-full bg-[#e5b45f]" />
             </div>
 
             {/* Mockup Typography inside the disc */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 pointer-events-none">
-              <span className="text-[10px] sm:text-xs font-semibold tracking-widest uppercase text-white/90 drop-shadow-md">
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-3 pointer-events-none">
+              <span className="text-[9px] sm:text-[11px] font-semibold tracking-widest uppercase text-white/90 drop-shadow-md">
                 {stationState.current_song_artist.toUpperCase()}
               </span>
-              <span className="text-sm sm:text-xl font-bold tracking-wider uppercase text-white drop-shadow-lg">
+              <span className="text-xs sm:text-lg font-bold tracking-wider uppercase text-white drop-shadow-lg truncate max-w-[85%]">
                 {stationState.current_song_title.toUpperCase()}
               </span>
             </div>
@@ -293,22 +293,22 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
       </div>
 
       {/* Song Metadata Display */}
-      <div className="text-center mt-2 sm:mt-4 z-10">
-        <h2 className="text-2xl sm:text-4xl font-bold text-white tracking-tight drop-shadow-md">
+      <div className="text-center mt-1 sm:mt-2 z-10">
+        <h2 className="text-xl sm:text-3xl font-bold text-white tracking-tight drop-shadow-md truncate max-w-lg">
           {stationState.current_song_title}
         </h2>
-        <p className="text-sm sm:text-base font-medium text-[#e5b45f] mt-1 tracking-wide">
+        <p className="text-xs sm:text-sm font-medium text-[#e5b45f] mt-0.5 tracking-wide">
           {stationState.current_song_artist}
         </p>
       </div>
 
       {/* Primary Player Controls */}
-      <div className="flex items-center justify-center gap-6 sm:gap-8 mt-6 z-10">
+      <div className="flex items-center justify-center gap-5 sm:gap-7 mt-3 sm:mt-4 z-10">
         {/* Like Button with Toast */}
         <div className="relative flex items-center justify-center">
           <button
             onClick={handleToggleFavorite}
-            className={`p-3 rounded-full transition-all duration-200 active:scale-90 ${
+            className={`p-2.5 sm:p-3 rounded-full transition-all duration-200 active:scale-90 ${
               isLiked
                 ? 'text-rose-500 hover:text-rose-400 bg-rose-500/10'
                 : 'text-gray-400 hover:text-white hover:bg-white/5'
@@ -317,7 +317,7 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
             aria-label={isLiked ? 'Quitar de la playlist de favoritas' : 'Guardar en la playlist de favoritas'}
           >
             <Heart
-              className={`w-6 h-6 sm:w-7 sm:h-7 transition-transform duration-300 ${
+              className={`w-5 h-5 sm:w-6 sm:h-6 transition-transform duration-300 ${
                 isLiked ? 'fill-current' : ''
               } ${heartAnimation ? 'scale-125 text-rose-500 animate-pulse' : ''}`}
             />
@@ -336,18 +336,18 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
           onClick={togglePlay}
           disabled={isLoading}
           aria-label={isPlaying ? 'Pausar transmisión' : 'Escuchar en vivo'}
-          className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center transition-all duration-300 transform active:scale-95 ${
+          className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all duration-300 transform active:scale-95 cursor-pointer ${
             isPlaying
               ? 'bg-[#e5b45f] text-black shadow-lg shadow-[#e5b45f]/40 ring-4 ring-[#e5b45f]/20 scale-105'
               : 'bg-gradient-to-tr from-[#d9a149] to-[#f3c87a] text-black shadow-xl shadow-[#e5b45f]/30 hover:scale-105'
           }`}
         >
           {isLoading ? (
-            <div className="w-7 h-7 border-2 border-black border-t-transparent rounded-full animate-spin" />
+            <div className="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin" />
           ) : isPlaying ? (
-            <Pause className="w-7 h-7 sm:w-8 sm:h-8 fill-current" />
+            <Pause className="w-6 h-6 sm:w-7 sm:h-7 fill-current" />
           ) : (
-            <Play className="w-7 h-7 sm:w-8 sm:h-8 fill-current ml-1" />
+            <Play className="w-6 h-6 sm:w-7 sm:h-7 fill-current ml-0.5" />
           )}
         </button>
 
@@ -355,7 +355,7 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
         <button
           type="button"
           onClick={() => setIsMuted((prev) => !prev)}
-          className={`p-3 rounded-full transition-all duration-200 active:scale-90 ${
+          className={`p-2.5 sm:p-3 rounded-full transition-all duration-200 active:scale-90 ${
             isMuted
               ? 'text-rose-400 bg-rose-500/10'
               : 'text-gray-400 hover:text-white hover:bg-white/5'
@@ -364,21 +364,21 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
           aria-label={isMuted ? 'Activar sonido' : 'Silenciar'}
         >
           {isMuted ? (
-            <VolumeX className="w-6 h-6 sm:w-7 sm:h-7 text-rose-400" />
+            <VolumeX className="w-5 h-5 sm:w-6 sm:h-6 text-rose-400" />
           ) : (
-            <Volume2 className="w-6 h-6 sm:w-7 sm:h-7" />
+            <Volume2 className="w-5 h-5 sm:w-6 sm:h-6" />
           )}
         </button>
       </div>
 
       {/* Live Badge Status & Song Request Button */}
-      <div className="mt-6 flex flex-wrap items-center justify-center gap-3 z-10">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-[#e5b45f]/40 bg-[#e5b45f]/10 backdrop-blur-md">
-          <span className="relative flex h-2.5 w-2.5">
+      <div className="mt-3 sm:mt-4 flex flex-wrap items-center justify-center gap-2.5 z-10">
+        <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full border border-[#e5b45f]/40 bg-[#e5b45f]/10 backdrop-blur-md">
+          <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#e5b45f] opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#e5b45f]"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-[#e5b45f]"></span>
           </span>
-          <span className="text-xs font-semibold tracking-wider text-[#e5b45f] uppercase">
+          <span className="text-[11px] font-semibold tracking-wider text-[#e5b45f] uppercase">
             EN VIVO · NEXO RADIO
           </span>
         </div>
@@ -387,11 +387,11 @@ export default function PublicPlayer({ onOpenRequestModal }: PublicPlayerProps) 
         <button
           type="button"
           onClick={onOpenRequestModal}
-          className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-[#e5b45f]/40 bg-gradient-to-r from-[#e5b45f]/20 to-[#f3c87a]/20 hover:from-[#e5b45f]/30 hover:to-[#f3c87a]/30 text-white hover:text-[#e5b45f] text-xs font-semibold tracking-wide transition-all transform active:scale-95 shadow-md shadow-[#e5b45f]/10 cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full border border-[#e5b45f]/40 bg-gradient-to-r from-[#e5b45f]/20 to-[#f3c87a]/20 hover:from-[#e5b45f]/30 hover:to-[#f3c87a]/30 text-white hover:text-[#e5b45f] text-[11px] font-semibold tracking-wide transition-all transform active:scale-95 shadow-md shadow-[#e5b45f]/10 cursor-pointer"
           title="Pedir una canción a la cabina de NEXO Radio"
           aria-label="Pedir canción"
         >
-          <Music2 className="w-3.5 h-3.5 text-[#e5b45f]" />
+          <Music2 className="w-3 h-3 text-[#e5b45f]" />
           <span>Pedir canción</span>
         </button>
       </div>
