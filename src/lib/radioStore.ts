@@ -13,6 +13,21 @@ class RadioStore {
   private listeners: Set<() => void> = new Set();
   private requestListeners: Set<(req: SongRequest) => void> = new Set();
 
+  // In-memory caching & in-flight promise deduplication
+  private cachedSongs: Song[] | null = null;
+  private songsPromise: Promise<Song[]> | null = null;
+  private songsCacheTime = 0;
+
+  private cachedPlaylists: Playlist[] | null = null;
+  private playlistsPromise: Promise<Playlist[]> | null = null;
+  private playlistsCacheTime = 0;
+
+  private cachedRequests: SongRequest[] | null = null;
+  private requestsPromise: Promise<SongRequest[]> | null = null;
+  private requestsCacheTime = 0;
+
+  private readonly CACHE_TTL_MS = 60000; // 60 seconds
+
   constructor() {
     if (typeof window !== 'undefined') {
       try {
@@ -21,6 +36,7 @@ class RadioStore {
           if (event.data?.type === 'STATE_CHANGED') {
             this.notify();
           } else if (event.data?.type === 'NEW_REQUEST' && event.data.payload) {
+            this.invalidateRequestsCache();
             this.notifyNewRequest(event.data.payload);
             this.notify();
           }
@@ -30,7 +46,11 @@ class RadioStore {
       }
 
       window.addEventListener('storage', (e) => {
-        if (e.key?.startsWith('nexo_radio_')) {
+        // Ignore STATE_KEY changes to avoid cross-tab infinite broadcast loops
+        if (e.key?.startsWith('nexo_radio_') && e.key !== STATE_KEY) {
+          if (e.key === SONGS_KEY) this.invalidateSongsCache();
+          if (e.key === PLAYLISTS_KEY) this.invalidatePlaylistsCache();
+          if (e.key === REQUESTS_KEY) this.invalidateRequestsCache();
           this.notify();
         }
       });
@@ -74,6 +94,7 @@ class RadioStore {
             'postgres_changes',
             { event: '*', schema: 'public', table: 'song_requests' },
             (payload) => {
+              this.invalidateRequestsCache();
               if (payload.eventType === 'INSERT' && payload.new) {
                 this.notifyNewRequest(payload.new as SongRequest);
               }
@@ -84,6 +105,8 @@ class RadioStore {
             'postgres_changes',
             { event: '*', schema: 'public', table: 'songs' },
             () => {
+              this.invalidateSongsCache();
+              this.invalidatePlaylistsCache();
               this.notify();
             }
           )
@@ -101,6 +124,24 @@ class RadioStore {
           });
       }
     }
+  }
+
+  public invalidateSongsCache() {
+    this.cachedSongs = null;
+    this.songsPromise = null;
+    this.songsCacheTime = 0;
+  }
+
+  public invalidatePlaylistsCache() {
+    this.cachedPlaylists = null;
+    this.playlistsPromise = null;
+    this.playlistsCacheTime = 0;
+  }
+
+  public invalidateRequestsCache() {
+    this.cachedRequests = null;
+    this.requestsPromise = null;
+    this.requestsCacheTime = 0;
   }
 
   public subscribe(callback: () => void) {
@@ -147,60 +188,74 @@ class RadioStore {
   }
 
   // --- SONGS ---
-  public async getSongs(): Promise<Song[]> {
-    let dbSongs: Song[] = [];
-    if (isSupabaseConfigured && supabase) {
-      try {
-        const { data, error } = await supabase.from('songs').select('*').order('created_at', { ascending: false });
-        if (!error && data && data.length > 0) {
-          dbSongs = data as Song[];
-        }
-      } catch (e) {
-        console.warn('Error fetching Supabase songs:', e);
-      }
+  public async getSongs(forceRefresh = false): Promise<Song[]> {
+    if (!forceRefresh && this.cachedSongs && Date.now() - this.songsCacheTime < this.CACHE_TTL_MS) {
+      return this.cachedSongs;
+    }
+    if (!forceRefresh && this.songsPromise) {
+      return this.songsPromise;
     }
 
-    let localSongs: Song[] = [];
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(SONGS_KEY);
-      if (saved) {
+    this.songsPromise = (async () => {
+      let dbSongs: Song[] = [];
+      if (isSupabaseConfigured && supabase) {
         try {
-          localSongs = JSON.parse(saved);
-        } catch {}
+          const { data, error } = await supabase.from('songs').select('*').order('created_at', { ascending: false });
+          if (!error && data && data.length > 0) {
+            dbSongs = data as Song[];
+          }
+        } catch (e) {
+          console.warn('Error fetching Supabase songs:', e);
+        }
       }
-    }
 
-    // Merge: Put DB songs FIRST (they are the real production songs), then local, then demo songs
-    const songMap = new Map<string, Song>();
-    dbSongs.forEach((s) => songMap.set(s.id, s));
-    localSongs.forEach((s) => {
-      if (!songMap.has(s.id)) songMap.set(s.id, s);
-    });
-    INITIAL_SONGS.forEach((s) => {
-      if (!songMap.has(s.id)) songMap.set(s.id, s);
-    });
-
-    // Sort by created_at descending (newest uploads appear first at the top)
-    const result = Array.from(songMap.values()).sort((a, b) => {
-      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return timeB - timeA;
-    });
-
-    // Sanitize any dead or blocked external URLs (e.g. Pixabay) to local working MP3s
-    const sanitized = result.map((s, idx) => {
-      let url = s.file_url;
-      if (!url || url.includes('pixabay.com')) {
-        url = idx % 2 === 0 ? '/songs/summer.mp3' : '/songs/flowers.mp3';
+      let localSongs: Song[] = [];
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem(SONGS_KEY);
+        if (saved) {
+          try {
+            localSongs = JSON.parse(saved);
+          } catch {}
+        }
       }
-      return { ...s, file_url: url };
-    });
 
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(SONGS_KEY, JSON.stringify(sanitized));
-    }
+      // Merge: Put DB songs FIRST (they are the real production songs), then local, then demo songs
+      const songMap = new Map<string, Song>();
+      dbSongs.forEach((s) => songMap.set(s.id, s));
+      localSongs.forEach((s) => {
+        if (!songMap.has(s.id)) songMap.set(s.id, s);
+      });
+      INITIAL_SONGS.forEach((s) => {
+        if (!songMap.has(s.id)) songMap.set(s.id, s);
+      });
 
-    return sanitized;
+      // Sort by created_at descending (newest uploads appear first at the top)
+      const result = Array.from(songMap.values()).sort((a, b) => {
+        const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return timeB - timeA;
+      });
+
+      // Sanitize any dead or blocked external URLs (e.g. Pixabay) to local working MP3s
+      const sanitized = result.map((s, idx) => {
+        let url = s.file_url;
+        if (!url || url.includes('pixabay.com')) {
+          url = idx % 2 === 0 ? '/songs/summer.mp3' : '/songs/flowers.mp3';
+        }
+        return { ...s, file_url: url };
+      });
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(SONGS_KEY, JSON.stringify(sanitized));
+      }
+
+      this.cachedSongs = sanitized;
+      this.songsCacheTime = Date.now();
+      this.songsPromise = null;
+      return sanitized;
+    })();
+
+    return this.songsPromise;
   }
 
   public async addSong(song: Omit<Song, 'id' | 'created_at'>): Promise<Song> {
@@ -250,6 +305,7 @@ class RadioStore {
       await this.syncSongWithFavoritesPlaylist(newSong, true);
     }
 
+    this.invalidateSongsCache();
     this.postSync();
     return newSong;
   }
@@ -293,6 +349,8 @@ class RadioStore {
       localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(playlists));
     }
 
+    this.invalidateSongsCache();
+    this.invalidatePlaylistsCache();
     this.postSync();
     return true;
   }
@@ -378,6 +436,8 @@ class RadioStore {
     // Keep playlist "Favoritas" in sync
     await this.syncSongWithFavoritesPlaylist(song, newVal);
 
+    this.invalidateSongsCache();
+    this.invalidatePlaylistsCache();
     this.postSync();
     return newVal;
   }
@@ -405,90 +465,104 @@ class RadioStore {
   }
 
   // --- PLAYLISTS ---
-  public async getPlaylists(): Promise<Playlist[]> {
-    let result: Playlist[] = [];
-
-    if (isSupabaseConfigured && supabase) {
-      try {
-        const { data, error } = await supabase
-          .from('playlists')
-          .select('*, playlist_songs(position, song:songs(*))');
-        if (!error && data && data.length > 0) {
-          result = data.map((p: any) => ({
-            ...p,
-            songs: p.playlist_songs
-              ? p.playlist_songs
-                  .sort((a: any, b: any) => a.position - b.position)
-                  .map((ps: any) => ps.song)
-                  .filter(Boolean)
-              : [],
-          })) as Playlist[];
-        }
-      } catch (e) {
-        console.warn('Supabase getPlaylists notice:', e);
-      }
+  public async getPlaylists(forceRefresh = false): Promise<Playlist[]> {
+    if (!forceRefresh && this.cachedPlaylists && Date.now() - this.playlistsCacheTime < this.CACHE_TTL_MS) {
+      return this.cachedPlaylists;
+    }
+    if (!forceRefresh && this.playlistsPromise) {
+      return this.playlistsPromise;
     }
 
-    if (result.length === 0 && typeof window !== 'undefined') {
-      const saved = localStorage.getItem(PLAYLISTS_KEY);
-      if (saved) {
+    this.playlistsPromise = (async () => {
+      let result: Playlist[] = [];
+
+      if (isSupabaseConfigured && supabase) {
         try {
-          result = JSON.parse(saved);
-        } catch {}
-      }
-    }
-
-    if (result.length === 0) {
-      result = [...INITIAL_PLAYLISTS];
-    }
-
-    // Always ensure the Favoritas playlist is synchronized with all favorite songs
-    const allSongs = await this.getSongs();
-    const favSongs = allSongs.filter((s) => s.is_favorite);
-    let favPlaylist = result.find(
-      (p) =>
-        p.name.trim().toLowerCase() === 'favoritas' ||
-        p.id === 'playlist-1' ||
-        p.id === '11111111-1111-1111-1111-111111111111'
-    );
-
-    if (favPlaylist) {
-      let changed = false;
-      const playlistSongs = favPlaylist.songs || [];
-
-      // Keep only songs that are still marked as favorite
-      const filtered = playlistSongs.filter((s) => {
-        const liveSong = allSongs.find((item) => item.id === s.id);
-        return liveSong ? liveSong.is_favorite : true;
-      });
-
-      if (filtered.length !== playlistSongs.length) {
-        favPlaylist.songs = filtered;
-        changed = true;
-      }
-
-      // Add any favorite songs that are not yet in the playlist
-      const currentList = favPlaylist.songs || [];
-      favSongs.forEach((song) => {
-        if (!currentList.some((s) => s.id === song.id)) {
-          currentList.push(song);
-          changed = true;
+          const { data, error } = await supabase
+            .from('playlists')
+            .select('*, playlist_songs(position, song:songs(*))');
+          if (!error && data && data.length > 0) {
+            result = data.map((p: any) => ({
+              ...p,
+              songs: p.playlist_songs
+                ? p.playlist_songs
+                    .sort((a: any, b: any) => a.position - b.position)
+                    .map((ps: any) => ps.song)
+                    .filter(Boolean)
+                : [],
+            })) as Playlist[];
+          }
+        } catch (e) {
+          console.warn('Supabase getPlaylists notice:', e);
         }
-      });
+      }
 
-      favPlaylist.songs = currentList;
-      favPlaylist.songs_count = currentList.length;
-      favPlaylist.duration_seconds = currentList.reduce(
-        (acc, curr) => acc + (curr.duration || 0),
-        0
+      if (result.length === 0 && typeof window !== 'undefined') {
+        const saved = localStorage.getItem(PLAYLISTS_KEY);
+        if (saved) {
+          try {
+            result = JSON.parse(saved);
+          } catch {}
+        }
+      }
+
+      if (result.length === 0) {
+        result = [...INITIAL_PLAYLISTS];
+      }
+
+      // Always ensure the Favoritas playlist is synchronized with all favorite songs
+      const allSongs = await this.getSongs();
+      const favSongs = allSongs.filter((s) => s.is_favorite);
+      let favPlaylist = result.find(
+        (p) =>
+          p.name.trim().toLowerCase() === 'favoritas' ||
+          p.id === 'playlist-1' ||
+          p.id === '11111111-1111-1111-1111-111111111111'
       );
 
-      if (changed && typeof window !== 'undefined') {
-        localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(result));
-      }
-    }
+      if (favPlaylist) {
+        let changed = false;
+        const playlistSongs = favPlaylist.songs || [];
 
-    return result;
+        // Keep only songs that are still marked as favorite
+        const filtered = playlistSongs.filter((s) => {
+          const liveSong = allSongs.find((item) => item.id === s.id);
+          return liveSong ? liveSong.is_favorite : true;
+        });
+
+        if (filtered.length !== playlistSongs.length) {
+          favPlaylist.songs = filtered;
+          changed = true;
+        }
+
+        // Add any favorite songs that are not yet in the playlist
+        const currentList = favPlaylist.songs || [];
+        favSongs.forEach((song) => {
+          if (!currentList.some((s) => s.id === song.id)) {
+            currentList.push(song);
+            changed = true;
+          }
+        });
+
+        favPlaylist.songs = currentList;
+        favPlaylist.songs_count = currentList.length;
+        favPlaylist.duration_seconds = currentList.reduce(
+          (acc, curr) => acc + (curr.duration || 0),
+          0
+        );
+
+        if (changed && typeof window !== 'undefined') {
+          localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(result));
+        }
+      }
+
+      this.cachedPlaylists = result;
+      this.playlistsCacheTime = Date.now();
+      this.playlistsPromise = null;
+      return result;
+    })();
+
+    return this.playlistsPromise;
   }
 
   public async createPlaylist(name: string, description: string = ''): Promise<Playlist> {
@@ -521,6 +595,7 @@ class RadioStore {
     if (typeof window !== 'undefined') {
       localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(updated));
     }
+    this.invalidatePlaylistsCache();
     this.postSync();
     return newPlaylist;
   }
@@ -557,6 +632,7 @@ class RadioStore {
           if (typeof window !== 'undefined') {
             localStorage.setItem(SONGS_KEY, JSON.stringify(songs));
           }
+          this.invalidateSongsCache();
         }
       }
 
@@ -578,6 +654,7 @@ class RadioStore {
       if (typeof window !== 'undefined') {
         localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(playlists));
       }
+      this.invalidatePlaylistsCache();
       this.postSync();
     }
   }
@@ -609,6 +686,7 @@ class RadioStore {
         if (typeof window !== 'undefined') {
           localStorage.setItem(SONGS_KEY, JSON.stringify(songs));
         }
+        this.invalidateSongsCache();
       }
     }
 
@@ -627,6 +705,7 @@ class RadioStore {
     if (typeof window !== 'undefined') {
       localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(playlists));
     }
+    this.invalidatePlaylistsCache();
     this.postSync();
   }
 
@@ -663,33 +742,49 @@ class RadioStore {
   }
 
   // --- REQUESTS ---
-  public async getRequests(): Promise<SongRequest[]> {
-    if (isSupabaseConfigured && supabase) {
-      try {
-        const { data, error } = await supabase
-          .from('song_requests')
-          .select('*')
-          .order('created_at', { ascending: false });
-        if (!error && data) {
-          if (typeof window !== 'undefined') {
-            localStorage.setItem(REQUESTS_KEY, JSON.stringify(data));
-          }
-          return data as SongRequest[];
-        }
-      } catch (err) {
-        console.warn('Error fetching Supabase song_requests:', err);
-      }
+  public async getRequests(forceRefresh = false): Promise<SongRequest[]> {
+    if (!forceRefresh && this.cachedRequests && Date.now() - this.requestsCacheTime < this.CACHE_TTL_MS) {
+      return this.cachedRequests;
+    }
+    if (!forceRefresh && this.requestsPromise) {
+      return this.requestsPromise;
     }
 
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(REQUESTS_KEY);
-      if (saved) {
+    this.requestsPromise = (async () => {
+      let result: SongRequest[] = [];
+      if (isSupabaseConfigured && supabase) {
         try {
-          return JSON.parse(saved);
-        } catch {}
+          const { data, error } = await supabase
+            .from('song_requests')
+            .select('*')
+            .order('created_at', { ascending: false });
+          if (!error && data) {
+            result = data as SongRequest[];
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(REQUESTS_KEY, JSON.stringify(data));
+            }
+          }
+        } catch (err) {
+          console.warn('Error fetching Supabase song_requests:', err);
+        }
       }
-    }
-    return [];
+
+      if (result.length === 0 && typeof window !== 'undefined') {
+        const saved = localStorage.getItem(REQUESTS_KEY);
+        if (saved) {
+          try {
+            result = JSON.parse(saved);
+          } catch {}
+        }
+      }
+
+      this.cachedRequests = result;
+      this.requestsCacheTime = Date.now();
+      this.requestsPromise = null;
+      return result;
+    })();
+
+    return this.requestsPromise;
   }
 
   public async addRequest(req: Omit<SongRequest, 'id' | 'created_at' | 'status'>): Promise<SongRequest> {
@@ -722,6 +817,7 @@ class RadioStore {
               this.broadcastChannel.postMessage({ type: 'NEW_REQUEST', payload: created });
             } catch {}
           }
+          this.invalidateRequestsCache();
           this.notifyNewRequest(created);
           this.postSync();
           return created;
@@ -748,6 +844,7 @@ class RadioStore {
         this.broadcastChannel.postMessage({ type: 'NEW_REQUEST', payload: fallbackReq });
       } catch {}
     }
+    this.invalidateRequestsCache();
     this.notifyNewRequest(fallbackReq);
     this.postSync();
     return fallbackReq;
@@ -764,6 +861,7 @@ class RadioStore {
       if (typeof window !== 'undefined') {
         localStorage.setItem(REQUESTS_KEY, JSON.stringify(current));
       }
+      this.invalidateRequestsCache();
       this.postSync();
     }
   }

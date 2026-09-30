@@ -48,17 +48,17 @@ export default function StudioDashboardPage() {
 
   // Sync state
   useEffect(() => {
-    const update = async () => {
+    const updateState = () => {
       setStationState(radioStore.getStationState());
       setEngineState(audioEngine.getState());
       setQueue(radioStore.getQueue());
-      const s = await radioStore.getSongs();
-      setAllSongs(s);
-      const p = await radioStore.getPlaylists();
-      setPlaylists(p);
     };
 
-    const unsubStore = radioStore.subscribe(update);
+    // Load catalog once on mount (cached in radioStore)
+    radioStore.getSongs().then((s) => setAllSongs(s));
+    radioStore.getPlaylists().then((p) => setPlaylists(p));
+
+    const unsubStore = radioStore.subscribe(updateState);
     const unsubEngine = audioEngine.subscribe(() => {
       setEngineState(audioEngine.getState());
     });
@@ -66,7 +66,7 @@ export default function StudioDashboardPage() {
       setLevels(lvl);
     });
 
-    update();
+    updateState();
 
     // Restore music session and broadcast on refresh
     audioEngine.restoreSession();

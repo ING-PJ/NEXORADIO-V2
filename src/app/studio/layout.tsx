@@ -68,7 +68,9 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
     };
 
     updateRequests();
-    const unsubRequests = radioStore.subscribe(updateRequests);
+    const unsubRequests = radioStore.subscribeToNewRequests(() => {
+      updateRequests();
+    });
 
     return () => {
       unsub();

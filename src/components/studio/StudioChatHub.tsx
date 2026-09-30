@@ -75,28 +75,23 @@ export function StudioChatHub({
       soundEffects.playChatSound(micActive);
     });
 
-    // 4. Requests store updates
-    const unsubRadio = radioStore.subscribe(async () => {
-      const reqs = await radioStore.getRequests();
-      setRequests(reqs);
-    });
-
-    // 5. Incoming song request sound alert & top banner
+    // 4. Incoming song request sound alert, top banner & real-time list update
     const unsubReqIncoming = radioStore.subscribeToNewRequests((newReq) => {
       const micActive = audioEngine.getState().isMicOnAir;
       soundEffects.playRequestSound(micActive);
       setLatestRequestAlert(newReq);
+      setRequests((curr) => [newReq, ...curr.filter((r) => r.id !== newReq.id)]);
       setTimeout(() => {
         setLatestRequestAlert((curr) => (curr?.id === newReq.id ? null : curr));
       }, 7000);
     });
 
-    // 6. Audio engine mic status
+    // 5. Audio engine mic status
     const unsubEngine = audioEngine.subscribe(() => {
       setIsMicOnAir(audioEngine.getState().isMicOnAir);
     });
 
-    // 7. Sound effects mute state
+    // 6. Sound effects mute state
     const unsubSound = soundEffects.subscribe((enabled) => {
       setSoundEnabled(enabled);
     });
@@ -104,7 +99,6 @@ export function StudioChatHub({
     return () => {
       unsubChat();
       unsubChatIncoming();
-      unsubRadio();
       unsubReqIncoming();
       unsubEngine();
       unsubSound();
