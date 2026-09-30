@@ -667,7 +667,6 @@ class AudioEngine {
         this.airTimeSeconds++;
         radioStore.updateStationState({
           air_time_seconds: this.airTimeSeconds,
-          is_live: true,
         });
         this.notify();
       }, 1000);

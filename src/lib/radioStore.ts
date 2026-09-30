@@ -800,7 +800,25 @@ class RadioStore {
       localStorage.setItem(STATE_KEY, JSON.stringify(updated));
     }
 
-    if (isSupabaseConfigured && supabase) {
+    // CRITICAL PERFORMANCE & SUPABASE QUOTA OPTIMIZATION:
+    // Only persist to Supabase PostgreSQL when actual station metadata changes:
+    // - On-air live state changes (is_live)
+    // - Microphone on-air state changes (is_mic_active)
+    // - Current song changes (id, title, artist, cover, url, duration)
+    // Tick-by-tick events (such as current_song_progress from timeupdate and air_time_seconds
+    // from the on-air timer) are kept purely in local state/storage and MUST NOT trigger Supabase writes.
+    // This reduces database writes from >14,400/hour to ~15-20/hour, protecting Supabase quotas.
+    const hasSignificantChange =
+      (partial.is_live !== undefined && partial.is_live !== current.is_live) ||
+      (partial.is_mic_active !== undefined && partial.is_mic_active !== current.is_mic_active) ||
+      (partial.current_song_id !== undefined && partial.current_song_id !== current.current_song_id) ||
+      (partial.current_song_title !== undefined && partial.current_song_title !== current.current_song_title) ||
+      (partial.current_song_artist !== undefined && partial.current_song_artist !== current.current_song_artist) ||
+      (partial.current_song_cover !== undefined && partial.current_song_cover !== current.current_song_cover) ||
+      (partial.current_song_url !== undefined && partial.current_song_url !== current.current_song_url) ||
+      (partial.current_song_duration !== undefined && partial.current_song_duration !== current.current_song_duration);
+
+    if (hasSignificantChange && isSupabaseConfigured && supabase) {
       const isUuid = (str?: string | null) =>
         Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
 
@@ -814,7 +832,7 @@ class RadioStore {
         current_song_cover: updated.current_song_cover || '/cover_default.webp',
         current_song_url: updated.current_song_url || '/songs/summer.mp3',
         current_song_duration: updated.current_song_duration || 0,
-        current_song_progress: updated.current_song_progress || 0,
+        current_song_progress: 0,
         listeners_count: updated.listeners_count || 1,
         air_time_seconds: updated.air_time_seconds || 0,
         updated_at: new Date().toISOString(),
