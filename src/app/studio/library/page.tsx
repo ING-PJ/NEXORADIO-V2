@@ -17,21 +17,42 @@ import {
   Download,
   Share2,
   Edit,
-  Music2
+  Music2,
+  Volume2,
+  VolumeX,
+  Activity,
+  AlertTriangle,
+  Loader2,
+  ShieldAlert,
+  RotateCcw
 } from 'lucide-react';
 import { radioStore } from '@/lib/radioStore';
 import { audioEngine } from '@/lib/audioEngine';
 import { Song, Playlist } from '@/lib/types';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
+export interface SongAudioStatus {
+  playable: boolean;
+  reason?: string;
+  checkedAt: number;
+}
+
 export default function StudioLibraryPage() {
   const [songs, setSongs] = useState<Song[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
-  const [filterTab, setFilterTab] = useState<'todas' | 'recientes' | 'favoritas' | 'mas_escuchadas'>('todas');
+  const [filterTab, setFilterTab] = useState<'todas' | 'recientes' | 'favoritas' | 'mas_escuchadas' | 'sin_audio'>('todas');
   const [genreFilter, setGenreFilter] = useState('todos');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSongIds, setSelectedSongIds] = useState<Set<string>>(new Set());
   const [selectedSongDetails, setSelectedSongDetails] = useState<Song | null>(null);
+
+  // Audio health & diagnostics state
+  const [audioStatuses, setAudioStatuses] = useState<Record<string, SongAudioStatus>>({});
+  const [isDiagnosing, setIsDiagnosing] = useState(false);
+  const [diagnoseProgress, setDiagnoseProgress] = useState({ current: 0, total: 0 });
+  const [testingSongId, setTestingSongId] = useState<string | null>(null);
+  const [playbackAlert, setPlaybackAlert] = useState<{ song: Song; message: string } | null>(null);
+  const [hasRunDiagnostics, setHasRunDiagnostics] = useState(false);
 
   // Upload modal state
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -105,9 +126,121 @@ export default function StudioLibraryPage() {
     return () => unsub();
   }, []);
 
+  // Listen for audio engine playback failure events to flag broken tracks immediately
+  useEffect(() => {
+    const handlePlaybackFailed = (e: any) => {
+      if (e.detail?.song) {
+        const song: Song = e.detail.song;
+        const reason = e.detail.message || 'Error al intentar reproducir';
+        setAudioStatuses((prev) => ({
+          ...prev,
+          [song.id]: {
+            playable: false,
+            reason,
+            checkedAt: Date.now(),
+          },
+        }));
+        setPlaybackAlert({
+          song,
+          message: reason,
+        });
+      }
+    };
+    window.addEventListener('nexo_audio_playback_failed', handlePlaybackFailed);
+    return () => window.removeEventListener('nexo_audio_playback_failed', handlePlaybackFailed);
+  }, []);
+
+  const checkSingleSong = async (song: Song): Promise<SongAudioStatus> => {
+    if (!song.file_url) {
+      return { playable: false, reason: 'Sin enlace de archivo de audio', checkedAt: Date.now() };
+    }
+    if (song.file_url.startsWith('blob:')) {
+      return { playable: false, reason: 'Enlace blob temporal expirado', checkedAt: Date.now() };
+    }
+    if (song.file_url === '/songs/summer.mp3' && !song.title.toLowerCase().includes('summer')) {
+      return { playable: false, reason: 'Usa audio de prueba demo (sin archivo propio subido)', checkedAt: Date.now() };
+    }
+    if (song.file_url.startsWith('/')) {
+      try {
+        const res = await fetch(song.file_url, { method: 'HEAD' });
+        if (res.ok) return { playable: true, reason: 'Audio local disponible', checkedAt: Date.now() };
+        return { playable: false, reason: 'Archivo local no encontrado en el servidor', checkedAt: Date.now() };
+      } catch {
+        return { playable: false, reason: 'Error al acceder al archivo local', checkedAt: Date.now() };
+      }
+    }
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4500);
+      const res = await fetch(song.file_url, {
+        method: 'GET',
+        headers: { Range: 'bytes=0-20' },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (res.status === 200 || res.status === 206) {
+        return { playable: true, reason: 'Audio verificado y disponible', checkedAt: Date.now() };
+      }
+      return { playable: false, reason: `Error del servidor (HTTP ${res.status})`, checkedAt: Date.now() };
+    } catch (err: any) {
+      return {
+        playable: false,
+        reason: err.name === 'AbortError' ? 'Tiempo de espera agotado' : 'Archivo o enlace inaccesible',
+        checkedAt: Date.now(),
+      };
+    }
+  };
+
+  const handleTestSong = async (song: Song, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setTestingSongId(song.id);
+    const result = await checkSingleSong(song);
+    setAudioStatuses((prev) => ({ ...prev, [song.id]: result }));
+    setTestingSongId(null);
+  };
+
+  const handleRunDiagnostics = async () => {
+    if (isDiagnosing || songs.length === 0) return;
+    setIsDiagnosing(true);
+    setDiagnoseProgress({ current: 0, total: songs.length });
+    const newStatuses: Record<string, SongAudioStatus> = { ...audioStatuses };
+    const batchSize = 6;
+
+    for (let i = 0; i < songs.length; i += batchSize) {
+      const batch = songs.slice(i, i + batchSize);
+      await Promise.all(
+        batch.map(async (song) => {
+          const res = await checkSingleSong(song);
+          newStatuses[song.id] = res;
+        })
+      );
+      setAudioStatuses({ ...newStatuses });
+      setDiagnoseProgress({ current: Math.min(i + batchSize, songs.length), total: songs.length });
+    }
+
+    setIsDiagnosing(false);
+    setHasRunDiagnostics(true);
+  };
+
   const loadData = async (forceRefresh = false) => {
     const s = await radioStore.getSongs(forceRefresh);
     setSongs(s);
+
+    // Quick scan for red flags (no URL, expired blob, or demo fallback)
+    const initialFlags: Record<string, SongAudioStatus> = {};
+    s.forEach((song) => {
+      if (!song.file_url) {
+        initialFlags[song.id] = { playable: false, reason: 'Sin enlace de archivo', checkedAt: Date.now() };
+      } else if (song.file_url.startsWith('blob:')) {
+        initialFlags[song.id] = { playable: false, reason: 'Enlace blob temporal expirado', checkedAt: Date.now() };
+      } else if (song.file_url === '/songs/summer.mp3' && !song.title.toLowerCase().includes('summer')) {
+        initialFlags[song.id] = { playable: false, reason: 'Usa audio de prueba demo (sin archivo propio subido)', checkedAt: Date.now() };
+      }
+    });
+    if (Object.keys(initialFlags).length > 0) {
+      setAudioStatuses((prev) => ({ ...initialFlags, ...prev }));
+    }
+
     setSelectedSongDetails((prev) => {
       if (prev && s.some((song) => song.id === prev.id)) {
         return s.find((song) => song.id === prev.id) || null;
@@ -192,6 +325,29 @@ export default function StudioLibraryPage() {
       setSelectedSongDetails(null);
       await radioStore.deleteGenericSongs();
       await loadData(true);
+    }
+  };
+
+  const handleDeleteBrokenSongs = async (brokenList: Song[]) => {
+    if (brokenList.length === 0) return;
+    if (
+      confirm(
+        `¿Eliminar las ${brokenList.length} canciones que NO suenan de tu biblioteca?\n\nEsta acción quitará todos los enlaces rotos y archivos que no se pueden reproducir.`
+      )
+    ) {
+      const idsToDelete = brokenList.map((s) => s.id);
+      setSongs((prev) => prev.filter((s) => !idsToDelete.includes(s.id)));
+      if (selectedSongDetails && idsToDelete.includes(selectedSongDetails.id)) {
+        setSelectedSongDetails(null);
+      }
+      setSelectedSongIds(new Set());
+      for (const id of idsToDelete) {
+        await radioStore.deleteSong(id);
+      }
+      await loadData(true);
+      if (filterTab === 'sin_audio') {
+        setFilterTab('todas');
+      }
     }
   };
 
@@ -337,11 +493,32 @@ export default function StudioLibraryPage() {
     }
   };
 
+  // Broken / unplayable songs list
+  const brokenSongs = React.useMemo(() => {
+    return songs.filter((s) => {
+      const st = audioStatuses[s.id];
+      if (st) return !st.playable;
+      if (!s.file_url) return true;
+      if (s.file_url.startsWith('blob:')) return true;
+      if (s.file_url === '/songs/summer.mp3' && !s.title.toLowerCase().includes('summer')) return true;
+      return false;
+    });
+  }, [songs, audioStatuses]);
+
   // Filter songs
   const filteredSongs = songs
     .filter((s) => {
       if (filterTab === 'favoritas' && !s.is_favorite) return false;
       if (filterTab === 'mas_escuchadas' && (s.play_count || 0) < 1000) return false;
+      if (filterTab === 'sin_audio') {
+        const st = audioStatuses[s.id];
+        if (st) return !st.playable;
+        return (
+          !s.file_url ||
+          s.file_url.startsWith('blob:') ||
+          (s.file_url === '/songs/summer.mp3' && !s.title.toLowerCase().includes('summer'))
+        );
+      }
       if (genreFilter !== 'todos' && s.genre.toLowerCase() !== genreFilter.toLowerCase()) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
@@ -441,6 +618,30 @@ export default function StudioLibraryPage() {
             )}
           </div>
 
+          {/* Audio Diagnostics Button */}
+          <button
+            onClick={handleRunDiagnostics}
+            disabled={isDiagnosing || songs.length === 0}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl font-semibold text-xs transition-all border shadow-sm ${
+              isDiagnosing
+                ? 'bg-[#e5b45f]/20 border-[#e5b45f]/40 text-[#e5b45f] animate-pulse cursor-wait'
+                : 'bg-white/5 hover:bg-white/10 border-white/10 text-gray-200 hover:text-white'
+            }`}
+            title="Diagnosticar qué canciones tienen audio funcional y cuáles tienen enlaces rotos"
+          >
+            {isDiagnosing ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-[#e5b45f]" />
+                <span>Verificando audios ({diagnoseProgress.current}/{diagnoseProgress.total})...</span>
+              </>
+            ) : (
+              <>
+                <Activity className="w-4 h-4 text-[#e5b45f]" />
+                <span>Diagnosticar audios</span>
+              </>
+            )}
+          </button>
+
           {genericSongsCount > 0 && (
             <button
               onClick={handleDeleteGenericSongs}
@@ -461,6 +662,69 @@ export default function StudioLibraryPage() {
           </button>
         </div>
       </div>
+
+      {/* Playback Error Alert Toast Banner */}
+      {playbackAlert && (
+        <div className="flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-xs text-rose-200 animate-in fade-in">
+          <div className="flex items-center gap-2.5">
+            <VolumeX className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>
+              <strong>{playbackAlert.song.title}</strong>: {playbackAlert.message} Esta canción no sonará al aire.
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => {
+                handleDeleteSong(playbackAlert.song);
+                setPlaybackAlert(null);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs transition-colors shadow-sm"
+            >
+              Eliminar ahora
+            </button>
+            <button
+              onClick={() => setPlaybackAlert(null)}
+              className="p-1 rounded-lg text-rose-300 hover:text-white"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Broken Songs Alert Banner */}
+      {brokenSongs.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-gradient-to-r from-rose-500/15 via-rose-500/10 to-transparent border border-rose-500/30 animate-in fade-in">
+          <div className="flex items-center gap-3 text-xs text-rose-200">
+            <div className="w-8 h-8 rounded-xl bg-rose-500/20 flex items-center justify-center text-rose-400 shrink-0">
+              <VolumeX className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="font-semibold text-rose-300">
+                Se detectaron <strong>{brokenSongs.length}</strong> canción(es) que NO van a sonar en la emisora
+              </p>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                Tienen enlaces rotos, archivos inaccesibles o enlaces blob expirados.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setFilterTab('sin_audio')}
+              className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white font-medium text-xs transition-colors border border-white/10"
+            >
+              Ver las {brokenSongs.length} canciones
+            </button>
+            <button
+              onClick={() => handleDeleteBrokenSongs(brokenSongs)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-bold text-xs transition-all shadow-sm"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Eliminar canciones que no suenan ({brokenSongs.length})</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Generic Demo Songs Alert Banner */}
       {genericSongsCount > 0 && (
@@ -524,6 +788,19 @@ export default function StudioLibraryPage() {
           >
             Más escuchadas
           </button>
+          {brokenSongs.length > 0 && (
+            <button
+              onClick={() => setFilterTab('sin_audio')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                filterTab === 'sin_audio'
+                  ? 'bg-rose-500 text-white shadow-md shadow-rose-500/25'
+                  : 'bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 border border-rose-500/30'
+              }`}
+            >
+              <VolumeX className="w-3.5 h-3.5" />
+              <span>No suenan ({brokenSongs.length})</span>
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
@@ -631,9 +908,28 @@ export default function StudioLibraryPage() {
                             </div>
                             <div className="flex flex-col min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="font-semibold text-white truncate max-w-[220px]" title={song.title}>
+                                <span className="font-semibold text-white truncate max-w-[200px]" title={song.title}>
                                   {song.title}
                                 </span>
+                                {audioStatuses[song.id] ? (
+                                  audioStatuses[song.id].playable ? (
+                                    <span
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0"
+                                      title={audioStatuses[song.id].reason || 'Audio verificado y listo para sonar'}
+                                    >
+                                      <Volume2 className="w-2.5 h-2.5" />
+                                      SUENA
+                                    </span>
+                                  ) : (
+                                    <span
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-500/25 text-rose-300 border border-rose-500/40 shrink-0 animate-pulse"
+                                      title={audioStatuses[song.id].reason || 'Esta canción no suena'}
+                                    >
+                                      <VolumeX className="w-2.5 h-2.5" />
+                                      NO SUENA
+                                    </span>
+                                  )
+                                ) : null}
                                 {radioStore.isGenericSong(song) ? (
                                   <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0" title="Canción genérica de prueba">
                                     DEMO
@@ -649,7 +945,7 @@ export default function StudioLibraryPage() {
                             </div>
                           </div>
                         </td>
-                        <td className="py-3 px-3 text-gray-300 font-medium truncate max-w-[220px]" title={song.artist}>{song.artist}</td>
+                        <td className="py-3 px-3 text-gray-300 font-medium truncate max-w-[200px]" title={song.artist}>{song.artist}</td>
                         <td className="py-3 px-3 text-gray-400 hidden md:table-cell">{song.album || '—'}</td>
                         <td className="py-3 px-3">
                           <span className="px-2.5 py-0.5 rounded-full bg-white/5 border border-white/5 text-[10px] text-gray-300 font-medium">
@@ -665,6 +961,30 @@ export default function StudioLibraryPage() {
                               title="Reproducir"
                             >
                               <Play className="w-3.5 h-3.5 fill-current" />
+                            </button>
+                            <button
+                              onClick={(e) => handleTestSong(song, e)}
+                              disabled={testingSongId === song.id}
+                              className={`p-1.5 rounded-lg transition-colors ${
+                                audioStatuses[song.id]?.playable === false
+                                  ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30'
+                                  : audioStatuses[song.id]?.playable === true
+                                  ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25'
+                                  : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                              }`}
+                              title={
+                                audioStatuses[song.id]
+                                  ? `Diagnóstico: ${audioStatuses[song.id].reason || (audioStatuses[song.id].playable ? 'Audio OK' : 'No suena')}`
+                                  : 'Comprobar enlace de audio'
+                              }
+                            >
+                              {testingSongId === song.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#e5b45f]" />
+                              ) : audioStatuses[song.id]?.playable === false ? (
+                                <VolumeX className="w-3.5 h-3.5" />
+                              ) : (
+                                <Volume2 className="w-3.5 h-3.5" />
+                              )}
                             </button>
                             <button
                               onClick={(e) => handleToggleFavorite(song.id, e)}
@@ -769,6 +1089,66 @@ export default function StudioLibraryPage() {
                 </div>
               </div>
 
+              {/* Audio Health Status Card */}
+              <div
+                className={`p-3.5 rounded-2xl border text-xs transition-all ${
+                  audioStatuses[selectedSongDetails.id]?.playable === false
+                    ? 'bg-rose-500/15 border-rose-500/35 text-rose-200 shadow-md shadow-rose-500/10'
+                    : audioStatuses[selectedSongDetails.id]?.playable === true
+                    ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-200'
+                    : 'bg-white/5 border-white/5 text-gray-300'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                    <Activity className="w-3.5 h-3.5 text-[#e5b45f]" />
+                    Diagnóstico de audio
+                  </span>
+                  <button
+                    onClick={() => handleTestSong(selectedSongDetails)}
+                    disabled={testingSongId === selectedSongDetails.id}
+                    className="text-[10px] font-semibold text-[#e5b45f] hover:underline flex items-center gap-1"
+                  >
+                    {testingSongId === selectedSongDetails.id ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin" /> Comprobando...
+                      </>
+                    ) : (
+                      'Comprobar ahora'
+                    )}
+                  </button>
+                </div>
+
+                {audioStatuses[selectedSongDetails.id] ? (
+                  audioStatuses[selectedSongDetails.id].playable ? (
+                    <div className="flex items-center gap-2 text-xs text-emerald-400 font-medium">
+                      <Volume2 className="w-4 h-4 shrink-0" />
+                      <span>Audio verificado y listo para sonar al aire</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 text-xs text-rose-400 font-bold">
+                        <VolumeX className="w-4 h-4 shrink-0" />
+                        <span>Esta canción NO va a sonar</span>
+                      </div>
+                      <p className="text-[11px] text-gray-400 leading-tight">
+                        {audioStatuses[selectedSongDetails.id].reason || 'Archivo inaccesible o enlace roto'}. Te recomendamos eliminarla para evitar silencios al aire.
+                      </p>
+                    </div>
+                  )
+                ) : (
+                  <div className="flex items-center justify-between text-[11px] text-gray-400">
+                    <span>Estado no verificado</span>
+                    <button
+                      onClick={() => handleTestSong(selectedSongDetails)}
+                      className="text-[#e5b45f] underline hover:text-[#f3c87a]"
+                    >
+                      Probar enlace
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <div className="pt-2 flex flex-col gap-2">
                 <button
                   onClick={() => handlePlay(selectedSongDetails)}
@@ -779,10 +1159,18 @@ export default function StudioLibraryPage() {
                 </button>
                 <button
                   onClick={() => handleDeleteSong(selectedSongDetails)}
-                  className="w-full py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 border border-rose-500/20 shadow-sm"
+                  className={`w-full py-2.5 rounded-xl font-semibold text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm border ${
+                    audioStatuses[selectedSongDetails.id]?.playable === false
+                      ? 'bg-rose-500 hover:bg-rose-600 text-white border-rose-600 animate-bounce-subtle'
+                      : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/20'
+                  }`}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Eliminar de biblioteca</span>
+                  <span>
+                    {audioStatuses[selectedSongDetails.id]?.playable === false
+                      ? 'Eliminar canción que no suena'
+                      : 'Eliminar de biblioteca'}
+                  </span>
                 </button>
               </div>
             </div>

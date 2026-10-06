@@ -131,6 +131,19 @@ class AudioEngine {
       this.monitorGainNode.connect(this.ctx.destination);
 
       // Audio element listeners
+      this.audioElement.addEventListener('error', () => {
+        if (this.currentSong && typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('nexo_audio_playback_failed', {
+              detail: {
+                song: this.currentSong,
+                message: 'Error al cargar el stream o archivo de audio.',
+              },
+            })
+          );
+        }
+      });
+
       this.audioElement.addEventListener('ended', () => {
         this.handleTrackEnded();
       });
@@ -227,6 +240,17 @@ class AudioEngine {
       this.notify();
     } catch (err) {
       console.warn('Playback error, attempting fallback to local audio:', err);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('nexo_audio_playback_failed', {
+            detail: {
+              song,
+              error: err,
+              message: 'El archivo de audio no pudo reproducirse (enlace roto o inaccesible).',
+            },
+          })
+        );
+      }
       try {
         this.audioElement.src = '/songs/summer.mp3';
         if (startTime > 0) {
